@@ -5,7 +5,7 @@ owns separate files, so you can work at the same time without editing each other
 
 ## 1. Who does what
 
-| | Person A: Hardware & Video | Person B: Graphics & Level | Person C: Game Logic |
+| | Kyle: Hardware & Video | James: Graphics & Level | Alex: Game Logic |
 |---|---|---|---|
 | Files owned | `clk_gen.vhd`, `vga_timing.vhd`, `input_sync.vhd`, `test_pattern.vhd`, `digger_top.vhd`, `digger.xdc`, `ai_pkg.vhd` | `sprite_pkg.vhd`, `renderer.vhd`, `level_pkg.vhd`, `demo_pkg.vhd` | `game.vhd`, `tb_game.vhd` |
 | Job 1 | Get a stable picture on the monitor (clock, timing, wiring) | Draw the art and the renderer | Player movement + digging, then pump |
