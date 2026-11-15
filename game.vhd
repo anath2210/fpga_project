@@ -141,12 +141,12 @@ begin
 						-- TODO(C) M1: player movement + digging
 						if k_up = '1' then
 							v.pdir := 0;   -- 0 = up
-						elsif k_right = '1' then
-							v.pdir := 1;   -- 1 = right
 						elsif k_down = '1' then
 							v.pdir := 2;   -- 2 = down
 						elsif k_left = '1' then
 							v.pdir := 3;   -- 3 = left
+						elsif k_right = '1' then
+							v.pdir := 1;   -- 1 = right
 						end if;
 
 						if v.pcnt < MOVE_FRAMES then
@@ -163,6 +163,7 @@ begin
 								v.pcnt := 0;
 							end if;
 						end if;
+
 						-- TODO(C) M2: pump
 						has_target := false;
 						target_idx := -1;
@@ -170,19 +171,16 @@ begin
 						if k_pump = '1' then
 							v.pcnt := 0; -- no movement
 							
-							-- check pumping direction cells
-							for step_i in 1 to 3 loop
+							for step_i in 1 to 2 loop
 								cx := v.px + step_i * dir_dx(v.pdir);
 								cy := v.py + step_i * dir_dy(v.pdir);
 								
-								-- if not valid cell for enemy, stop checking
 								if not enemy_ok(v, cx, cy, false) then
 									v.hlen := step_i - 1;
 									exit;
 								else
 									v.hlen := step_i;
-									-- Check if a live enemy is in this cell
-									for i in 0 to 2 loop
+									for i in 0 to v.ealive'high loop
 										if v.ealive(i) = '1' and v.ex(i) = cx and v.ey(i) = cy then
 											has_target := true;
 											target_idx := i;
@@ -191,9 +189,8 @@ begin
 								end if;
 							end loop;
 
-							-- if enemy found, inflate them
 							if has_target then
-								v.ecnt(target_idx) := 0; -- freeze deflation/movement
+								v.ecnt(target_idx) := 0; -- freeze target enemy deflation/movement
 								if v.pcool < PUMP_FRAMES - 1 then
 									v.pcool := v.pcool + 1;
 								else
@@ -207,15 +204,19 @@ begin
 							else
 								v.pcool := 0;
 							end if;
-						else -- if not pumping
+						else
 							v.hlen := 0;
 							v.pcool := 0;
+						end if;
 
-							-- TODO(C) M3: enemies (calls enemy_step)
-							for i in 0 to 2 loop
-								if v.ealive(i) = '1' then
+						-- TODO(C) M3: enemies
+						for i in 0 to v.ealive'high loop
+							if v.ealive(i) = '1' then
+
+								-- if not pumped, start deflating if needed
+								if (k_pump = '0') or (has_target = false) or (i /= target_idx) then
 									if v.einfl(i) > 0 then
-										-- enemy frozen / deflating
+										-- Deflating over time if inflated
 										if v.ecnt(i) < DEFLATE_FRAMES - 1 then
 											v.ecnt(i) := v.ecnt(i) + 1;
 										else
@@ -223,7 +224,7 @@ begin
 											v.einfl(i) := v.einfl(i) - 1;
 										end if;
 									else
-										-- enemy movement timer
+										-- if deflated, move when rdy
 										if v.ecnt(i) < ENEMY_FRAMES - 1 then
 											v.ecnt(i) := v.ecnt(i) + 1;
 										else
@@ -235,8 +236,8 @@ begin
 										end if;
 									end if;
 								end if;
-							end loop;
-						end if;
+							end if;
+						end loop;
 
 						-- TODO(C) M4: rocks
 						crushed := false;
@@ -268,7 +269,7 @@ begin
 												crushed := true;
 											end if;
 											-- if rock crushes enemy
-											for i in 0 to 2 loop
+											for i in 0 to 3 loop
 												if v.ealive(i) = '1' and v.rx(j) = v.ex(i) and v.ry(j) = v.ey(i) then
 													v.ealive(i) := '0';
 												end if;
@@ -284,7 +285,7 @@ begin
 						end loop;
 
 						-- TODO(C) M5: death / win check
-						for i in 0 to 2 loop
+						for i in 0 to v.ealive'high loop
 							if v.ealive(i) = '1' and v.ex(i) = v.px and v.ey(i) = v.py and v.einfl(i) = 0 then
 								crushed := true;
 							end if;
@@ -298,7 +299,7 @@ begin
 						else
 							-- win condition (no enemies alive)
 							enemies_alive := false;
-							for i in 0 to 2 loop
+							for i in 0 to v.ealive'high loop
 								if v.ealive(i) = '1' then
 									enemies_alive := true;
 								end if;
@@ -328,7 +329,7 @@ begin
 								v.pcool := 0;
 								v.hlen := 0;
 
-								for i in 0 to 2 loop
+								for i in 0 to v.ealive'high loop
 									v.ex(i) := EX0(i);
 									v.ey(i) := EY0(i);
 									v.ealive(i) := '1';
