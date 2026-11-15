@@ -21,14 +21,14 @@
 --       - Step with dir_dx / dir_dy if player_ok(v, nx, ny). Moving INTO a cell digs it:
 --         v.dirt(ny*COLS + nx) := '0'. Reset v.pcnt to 0 after a step.
 --   M2  PUMP (when k_pump = '1'; the player can't move while pumping)
---       - Walk outward up to 3 cells in direction v.pdir. Stop at the first cell where
+--       - Walk outward up to 2 cells in direction v.pdir. Stop at the first cell where
 --         enemy_ok(v, cx, cy, false) is false (dirt, rock or border). Remember how far
 --         it got (v.hlen) and whether a live enemy is in one of those cells (the target).
 --       - If there is a target: count v.pcool up; every PUMP_FRAMES frames add 1 to
 --         v.einfl(target). When it reaches 4 the enemy pops: v.ealive(target) := '0'.
 --         Also set v.ecnt(target) := 0 while it is being pumped so it can't deflate or move.
 --       - If not pumping, set v.hlen := 0 and v.pcool := 0.
---   M3  ENEMIES (for each i in 0 to 2 that is alive)
+--   M3  ENEMIES (for each i in 0 to 3 that is alive)
 --       - If inflated (v.einfl(i) > 0) it is frozen and, unless it is the one being pumped,
 --         deflates by 1 every DEFLATE_FRAMES frames (use v.ecnt(i) as the timer).
 --       - Otherwise count v.ecnt(i) up; when it reaches ENEMY_FRAMES reset it and move:
@@ -107,8 +107,6 @@ architecture arch of game is
 	constant WOBBLE_FRAMES  : integer := 30;   -- rock wobble before falling
 	constant FALL_FRAMES    : integer := 5;    -- rock: one cell per 5 frames
 	constant DEAD_FRAMES    : integer := 90;   -- pause after dying
-
-	-- constant CYCLES_PER_FRAME: integer := 200000;  -- 12 MHz clock / 60 fps = 200,000 cycles per frame
 begin
 	gs <= s;
 
@@ -125,14 +123,6 @@ begin
 		variable r         : enemy_move_t;
 		variable crushed   : boolean;
 		variable enemies_alive : boolean;
-
-		variable move_counter 		: integer range 0 to MOVE_FRAMES-1 := 0;
-		variable pump_counter 		: integer range 0 to PUMP_FRAMES-1 := 0;
-		variable deflate_counter 	: integer range 0 to DEFLATE_FRAMES-1 :=	 0;
-		variable enemy_counter 		: integer range 0 to ENEMY_FRAMES-1 :=	 0;
-		variable wobble_counter 	: integer range 0 to WOBBLE_FRAMES-1 := 0;
-		variable fall_counter 		: integer range 0 to FALL_FRAMES-1 :=	 0;
-		variable dead_counter 		: integer range 0 to DEAD_FRAMES-1 :=	 0;
 
 	begin
 		if rising_edge(clk) then
@@ -160,9 +150,9 @@ begin
 							v.pdir := 1;   -- 1 = right
 						end if;
 
-						if v.pcnt < MOVE_FRAMES then
+						if v.pcnt < MOVE_FRAMES - 1 then
 							v.pcnt := v.pcnt + 1;
-						else
+						elsif k_pump = '0' then
 							nx := v.px + dir_dx(v.pdir);
 							ny := v.py + dir_dy(v.pdir);
 							if player_ok(v, nx, ny) then
@@ -195,6 +185,7 @@ begin
 										if v.ealive(i) = '1' and v.ex(i) = cx and v.ey(i) = cy then
 											has_target := true;
 											target_idx := i;
+											exit;
 										end if;
 									end loop;
 								end if;
@@ -208,8 +199,9 @@ begin
 									v.pcool := 0;
 									if v.einfl(target_idx) < 4 then
 										v.einfl(target_idx) := v.einfl(target_idx) + 1;
-									else
-										v.ealive(target_idx) := '0'; -- pop enemy
+										if v.einfl(target_idx) >= 4 then
+											v.ealive(target_idx) := '0'; -- pop enemy
+										end if;
 									end if;
 								end if;
 							else
@@ -280,7 +272,7 @@ begin
 												crushed := true;
 											end if;
 											-- if rock crushes enemy
-											for i in 0 to 3 loop
+											for i in 0 to v.ealive'high loop
 												if v.ealive(i) = '1' and v.rx(j) = v.ex(i) and v.ry(j) = v.ey(i) then
 													v.ealive(i) := '0';
 												end if;
@@ -335,18 +327,19 @@ begin
 								-- if lives, respawn player & reset alive enemies
 								v.px := PLAYER_X0;
 								v.py := PLAYER_Y0;
-								v.pdir := 0;
+								v.pdir := 1;
 								v.pcnt := 0;
 								v.pcool := 0;
 								v.hlen := 0;
 
 								for i in 0 to v.ealive'high loop
-									v.ex(i) := EX0(i);
-									v.ey(i) := EY0(i);
-									v.ealive(i) := '1';
-									v.einfl(i) := 0;
-									v.eghost(i) := 0;
-									v.ecnt(i) := 0;
+									if v.ealive(i) = '1' then
+										v.ex(i) := EX0(i);
+										v.ey(i) := EY0(i);
+										v.einfl(i) := 0;
+										v.eghost(i) := 0;
+										v.ecnt(i) := 0;
+									end if;
 								end loop;
 
 								v.gstate := 0;
