@@ -116,6 +116,13 @@ begin
 		-- TODO(C): declare the extra variables you need (wanted direction, new cell nx/ny,
 		--          pump target and length, an enemy-move record "r : enemy_move_t",
 		--          a 'crushed' flag, alive count, ...).
+		variable nx, ny    : integer;
+		variable cx, cy    : integer;
+		variable target_idx: integer;
+		variable has_target: boolean;
+		variable r         : enemy_move_t;
+		variable crushed   : boolean;
+		variable enemies_alive : boolean;
 	begin
 		if rising_edge(clk) then
 			if rst = '1' then
@@ -132,19 +139,215 @@ begin
 
 					when 0 =>
 						-- TODO(C) M1: player movement + digging
-						-- TODO(C) M2: pump
-						-- TODO(C) M3: enemies (calls enemy_step)
-						-- TODO(C) M4: rocks
-						-- TODO(C) M5: death / win check
-						null;
+						if k_up = '1' then
+							v.pdir := 0;   -- 0 = up
+						elsif k_right = '1' then
+							v.pdir := 1;   -- 1 = right
+						elsif k_down = '1' then
+							v.pdir := 2;   -- 2 = down
+						elsif k_left = '1' then
+							v.pdir := 3;   -- 3 = left
+						end if;
 
-					when 1 =>
+						if v.pcnt < MOVE_FRAMES then
+							v.pcnt := v.pcnt + 1;
+						else
+							nx := v.px + dir_dx(v.pdir);
+							ny := v.py + dir_dy(v.pdir);
+							if player_ok(v, nx, ny) then
+								v.px := nx;
+								v.py := ny;
+								if in_bounds(nx, ny) then
+									v.dirt(ny * COLS + nx) := '0';
+								end if;
+								v.pcnt := 0;
+							end if;
+						end if;
+						-- TODO(C) M2: pump
+						has_target := false;
+						target_idx := -1;
+
+						if k_pump = '1' then
+							v.pcnt := 0; -- no movement
+							
+							-- check pumping direction cells
+							for step_i in 1 to 3 loop
+								cx := v.px + step_i * dir_dx(v.pdir);
+								cy := v.py + step_i * dir_dy(v.pdir);
+								
+								-- if not valid cell for enemy, stop checking
+								if not enemy_ok(v, cx, cy, false) then
+									v.hlen := step_i - 1;
+									exit;
+								else
+									v.hlen := step_i;
+									-- Check if a live enemy is in this cell
+									for i in 0 to 2 loop
+										if v.ealive(i) = '1' and v.ex(i) = cx and v.ey(i) = cy then
+											has_target := true;
+											target_idx := i;
+										end if;
+									end loop;
+								end if;
+							end loop;
+
+							-- if enemy found, inflate them
+							if has_target then
+								v.ecnt(target_idx) := 0; -- freeze deflation/movement
+								if v.pcool < PUMP_FRAMES - 1 then
+									v.pcool := v.pcool + 1;
+								else
+									v.pcool := 0;
+									if v.einfl(target_idx) < 4 then
+										v.einfl(target_idx) := v.einfl(target_idx) + 1;
+									else
+										v.ealive(target_idx) := '0'; -- pop enemy
+									end if;
+								end if;
+							else
+								v.pcool := 0;
+							end if;
+						else -- if not pumping
+							v.hlen := 0;
+							v.pcool := 0;
+
+							-- TODO(C) M3: enemies (calls enemy_step)
+							for i in 0 to 2 loop
+								if v.ealive(i) = '1' then
+									if v.einfl(i) > 0 then
+										-- enemy frozen / deflating
+										if v.ecnt(i) < DEFLATE_FRAMES - 1 then
+											v.ecnt(i) := v.ecnt(i) + 1;
+										else
+											v.ecnt(i) := 0;
+											v.einfl(i) := v.einfl(i) - 1;
+										end if;
+									else
+										-- enemy movement timer
+										if v.ecnt(i) < ENEMY_FRAMES - 1 then
+											v.ecnt(i) := v.ecnt(i) + 1;
+										else
+											v.ecnt(i) := 0;
+											r := enemy_step(v, i);
+											v.ex(i) := r.nx;
+											v.ey(i) := r.ny;
+											v.eghost(i) := r.ghost;
+										end if;
+									end if;
+								end if;
+							end loop;
+						end if;
+
+						-- TODO(C) M4: rocks
+						crushed := false;
+						for j in 0 to 1 loop
+							case v.rstate(j) is
+								when 0 => -- still
+									if enemy_ok(v, v.rx(j), v.ry(j) + 1, false) then
+										v.rstate(j) := 1;
+										v.rtimer(j) := 0;
+									end if;
+
+								when 1 => -- wobbling
+									if v.rtimer(j) < WOBBLE_FRAMES - 1 then
+										v.rtimer(j) := v.rtimer(j) + 1;
+									else
+										v.rstate(j) := 2;
+										v.rtimer(j) := 0;
+									end if;
+
+								when 2 => -- falling
+									if v.rtimer(j) < FALL_FRAMES - 1 then
+										v.rtimer(j) := v.rtimer(j) + 1;
+									else
+										v.rtimer(j) := 0;
+										if enemy_ok(v, v.rx(j), v.ry(j) + 1, false) then
+											v.ry(j) := v.ry(j) + 1;
+											-- if rock crushes player
+											if v.rx(j) = v.px and v.ry(j) = v.py then
+												crushed := true;
+											end if;
+											-- if rock crushes enemy
+											for i in 0 to 2 loop
+												if v.ealive(i) = '1' and v.rx(j) = v.ex(i) and v.ry(j) = v.ey(i) then
+													v.ealive(i) := '0';
+												end if;
+											end loop;
+										else
+											v.rstate(j) := 0;
+										end if;
+									end if;
+
+								when others =>
+									v.rstate(j) := 0;
+							end case;
+						end loop;
+
+						-- TODO(C) M5: death / win check
+						for i in 0 to 2 loop
+							if v.ealive(i) = '1' and v.ex(i) = v.px and v.ey(i) = v.py and v.einfl(i) = 0 then
+								crushed := true;
+							end if;
+						end loop;
+
+						if crushed then
+							v.gstate := 1;
+							v.gtimer := DEAD_FRAMES;
+							v.hlen := 0;
+							v.lives := v.lives - 1;
+						else
+							-- win condition (no enemies alive)
+							enemies_alive := false;
+							for i in 0 to 2 loop
+								if v.ealive(i) = '1' then
+									enemies_alive := true;
+								end if;
+							end loop;
+							if not enemies_alive then
+								v.gstate := 3; -- win
+							end if;
+						end if;
+
+					
+					when 1 => 
 						-- TODO(C): death pause, then respawn or game over
-						null;
+
+						-- short pause after dying
+						if v.gtimer > 0 then
+							v.gtimer := v.gtimer - 1;
+						else
+							-- if no lives, game over
+							if v.lives = 0 then
+								v.gstate := 2;
+							else
+								-- if lives, respawn player & reset alive enemies
+								v.px := PLAYER_X0;
+								v.py := PLAYER_Y0;
+								v.pdir := 0;
+								v.pcnt := 0;
+								v.pcool := 0;
+								v.hlen := 0;
+
+								for i in 0 to 2 loop
+									v.ex(i) := EX0(i);
+									v.ey(i) := EY0(i);
+									v.ealive(i) := '1';
+									v.einfl(i) := 0;
+									v.eghost(i) := 0;
+									v.ecnt(i) := 0;
+								end loop;
+
+								v.gstate := 0;
+							end if;
+						end if;
 
 					when others =>
 						-- TODO(C): game over / win: restart when k_start = '1'
-						null;
+						if k_start = '1' then
+							lf := v.lfsr;
+							v := INIT;
+							v.lfsr := lf;
+						end if;
 
 				end case;
 
