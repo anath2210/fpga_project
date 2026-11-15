@@ -107,6 +107,8 @@ architecture arch of game is
 	constant WOBBLE_FRAMES  : integer := 30;   -- rock wobble before falling
 	constant FALL_FRAMES    : integer := 5;    -- rock: one cell per 5 frames
 	constant DEAD_FRAMES    : integer := 90;   -- pause after dying
+
+	-- constant CYCLES_PER_FRAME: integer := 200000;  -- 12 MHz clock / 60 fps = 200,000 cycles per frame
 begin
 	gs <= s;
 
@@ -123,6 +125,15 @@ begin
 		variable r         : enemy_move_t;
 		variable crushed   : boolean;
 		variable enemies_alive : boolean;
+
+		variable move_counter 		: integer range 0 to MOVE_FRAMES-1 := 0;
+		variable pump_counter 		: integer range 0 to PUMP_FRAMES-1 := 0;
+		variable deflate_counter 	: integer range 0 to DEFLATE_FRAMES-1 :=	 0;
+		variable enemy_counter 		: integer range 0 to ENEMY_FRAMES-1 :=	 0;
+		variable wobble_counter 	: integer range 0 to WOBBLE_FRAMES-1 := 0;
+		variable fall_counter 		: integer range 0 to FALL_FRAMES-1 :=	 0;
+		variable dead_counter 		: integer range 0 to DEAD_FRAMES-1 :=	 0;
+
 	begin
 		if rising_edge(clk) then
 			if rst = '1' then
