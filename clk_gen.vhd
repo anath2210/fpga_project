@@ -1,3 +1,4 @@
+
 -- clk_gen.vhd  --  OWNER: Person A (Hardware & Video)
 --
 -- GOAL: turn the 12 MHz board clock into a 25 MHz pixel clock for VGA 640x480.
@@ -36,12 +37,26 @@ entity clk_gen is
 end clk_gen;
 
 architecture arch of clk_gen is
-	-- TODO(A): declare the signals you need (unbuffered feedback, buffered feedback,
-	--          unbuffered output clock).
+	signal fb_u, fb_b, out_u : std_logic;
 begin
-	-- TODO(A): MMCME2_BASE instance and the two BUFGs go here.
+	mmcm: MMCME2_BASE
+		generic map(
+			BANDWIDTH => "OPTIMIZED",
+			CLKFBOUT_MULT_F => 50.875,
+			CLKIN1_PERIOD => 83.333,
+			CLKOUT0_DIVID_F => 24.250,
+			DIVCLK_DIVIDE => 1,
+			STARTUP_WAIT => FALSE)
+		port map(
+			CLKIN1 => clk_in,
+			CLKFBIN => fb_b,
+			CLKFBOUT => fb_u,
+			CLKOUT0 => out_u,
+			LOCKED => locked,
+			PWRDWN => '0',
+			RST => '0'
+		);
 
-	-- PLACEHOLDER (delete once the MMCM works):
-	clk_out <= clk_in;
-	locked  <= '1';
+	fb_buf: BUFG port map(I => fb_u, O => fb_b);
+	out_buf: BUFG port map(I => out_u, O => clk_out);
 end arch;
