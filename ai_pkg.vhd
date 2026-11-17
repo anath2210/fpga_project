@@ -36,31 +36,127 @@ use IEEE.numeric_std.all;
 use work.digger_pkg.all;
 
 package ai_pkg is
-	type enemy_move_t is record
-		nx    : integer range 0 to 19;   -- new x cell
-		ny    : integer range 0 to 14;   -- new y cell
-		ghost : integer range 0 to 63;   -- new value for st.eghost(i)
+	type edec_t is record
+		go      : boolean;
+		dir     : integer range 0 to 3;
+		ghost   : boolean;
+		breathe : boolean;
 	end record;
-
-	-- i = enemy index (0..2)
-	function enemy_step(st : game_state_t; i : integer) return enemy_move_t;
+	function enemy_decide(st : game_state_t; i : integer; r : std_logic_vector(7 downto 0)) return edec_t;
 end package;
 
 package body ai_pkg is
 
-	function enemy_step(st : game_state_t; i : integer) return enemy_move_t is
-		variable r : enemy_move_t;
-		-- TODO(A): declare the variables you need (ghost-mode flag, best direction,
-		--          best distance, current distance, random direction, ...).
+	--  distance between two cells' corners
+	function dist(ax, ay, bx, by : integer) return integer is
 	begin
-		-- PLACEHOLDER: the enemy stays where it is. Replace with the algorithm above.
-		r.nx    := st.ex(i);
-		r.ny    := st.ey(i);
-		r.ghost := st.eghost(i);
+		return abs(ax - bx) + abs(ay - by);
+	end function;
 
-		-- TODO(A): implement steps 1-6 here.
+	function enemy_decide(st : game_state_t; i : integer; r : std_logic_vector(7 downto 0)) return edec_t is
+		variable d      : edec_t;
+		variable c, rw  : integer;   -- this enemy's cell
+		variable tx, ty : integer;   -- target (pixels)
+		variable ghost  : boolean;
+		variable best   : integer;
+		variable score  : integer;
+		variable nc, nr : integer;
+		variable found  : boolean;
+		variable rev    : integer;
+		variable pd     : integer;
+		variable n      : integer;
+		variable gok    : boolean;
+	begin
+		d.go := true;  d.dir := st.edir(i);  d.ghost := false;  d.breathe := false;
+		c  := st.ex(i) / TILE;
+		rw := st.ey(i) / TILE;
+		rev := opposite(st.edir(i));
+		ghost := st.eghost(i) > 0;
+		gok := st.eage(i) >= ghost_delay(st.rnd);
 
-		return r;
+		-- target the player or the top-left corner when this is the last enemy
+		if alive_count(st) = 1 then
+			tx := 0;  ty := ROW_SURF * TILE;
+			d.ghost := true;  ghost := true;
+		else
+			tx := st.px;  ty := st.py;
+		end if;
+
+		-- fire-breather breathe when the player is lined up in front and close
+		if st.ekind(i) = 1 and not ghost and alive_count(st) > 1 and r(1 downto 0) = "00" then
+			if (st.edir(i) = 1 and st.py = st.ey(i) and st.px > st.ex(i) and st.px - st.ex(i) <= 3 * TILE) or
+			   (st.edir(i) = 3 and st.py = st.ey(i) and st.px < st.ex(i) and st.ex(i) - st.px <= 3 * TILE) or
+			   (st.edir(i) = 0 and st.px = st.ex(i) and st.py < st.ey(i) and st.ey(i) - st.py <= 3 * TILE) or
+			   (st.edir(i) = 2 and st.px = st.ex(i) and st.py > st.ey(i) and st.py - st.ey(i) <= 3 * TILE) then
+				d.breathe := true;
+				d.go := false;
+				return d;
+			end if;
+		end if;
+
+		-- ghost mode head straight for the target through anything but rocks
+		if ghost then
+			best := 100000;  found := false;
+			for k in 0 to 3 loop
+				nc := c  + dir_dx(k);
+				nr := rw + dir_dy(k);
+				if enemy_cell_ok(st, nc, nr, true) then
+					score := dist(nc * TILE, nr * TILE, tx, ty);
+					if k = rev then score := score + 8; end if;       -- small bias against turning back
+					if score < best then best := score; d.dir := k; found := true; end if;
+				end if;
+			end loop;
+			d.go := found;
+			return d;
+		end if;
+
+		-- normal mode move through tunnels and prefer the way that gets closer
+		best := 100000;  found := false;  n := 0;
+		for k in 0 to 3 loop
+			nc := c  + dir_dx(k);
+			nr := rw + dir_dy(k);
+			if k /= rev and enemy_cell_ok(st, nc, nr, false) then
+				n := n + 1;
+				score := dist(nc * TILE, nr * TILE, tx, ty);
+				if k = st.edir(i) then score := score - 4; end if;    -- tiny bias to keep going straight
+				if score < best then best := score; d.dir := k; found := true; end if;
+			end if;
+		end loop;
+
+		-- sometimes pick another open way so enemies are not perfectly predictable
+		if n >= 2 and r(4 downto 2) = "000" then
+			pd := to_integer(unsigned(r(7 downto 6)));
+			for k in 0 to 3 loop
+				nc := c  + dir_dx((pd + k) mod 4);
+				nr := rw + dir_dy((pd + k) mod 4);
+				if (pd + k) mod 4 /= rev and enemy_cell_ok(st, nc, nr, false) then
+					d.dir := (pd + k) mod 4;
+					exit;
+				end if;
+			end loop;
+		end if;
+
+		if not found then
+			-- dead end turn back if possible or become ghost
+			if enemy_cell_ok(st, c + dir_dx(rev), rw + dir_dy(rev), false) and (r(3 downto 2) /= "00" or not gok) then
+				d.dir := rev;
+			else
+				d.ghost := true;
+				best := 100000;  found := false;
+				for k in 0 to 3 loop
+					nc := c  + dir_dx(k);
+					nr := rw + dir_dy(k);
+					if enemy_cell_ok(st, nc, nr, true) then
+						score := dist(nc * TILE, nr * TILE, tx, ty);
+						if score < best then best := score; d.dir := k; found := true; end if;
+					end if;
+				end loop;
+				d.go := found;
+			end if;
+		elsif gok and n = 1 and r(7 downto 5) = "000" then
+			d.ghost := true;
+		end if;
+		return d;
 	end function;
 
 end package body;

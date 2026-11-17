@@ -90,9 +90,9 @@ begin
 	s_pump:  entity work.input_sync generic map(ACTIVE_LOW => true)
 		port map(clk => pix_clk, din => key_pump,  dout => d_pump);
 	s_start: entity work.input_sync generic map(ACTIVE_LOW => false)
-		port map(clk => pix_clk, din => btn(1),    dout => d_start);
+		port map(clk => pix_clk, din => btn(0),    dout => d_start);
 	s_rst:   entity work.input_sync generic map(ACTIVE_LOW => false)
-		port map(clk => pix_clk, din => btn(0),    dout => d_rst);
+		port map(clk => pix_clk, din => btn(1),    dout => d_rst);
 
 	logic: entity work.game
 		port map(clk => pix_clk, rst => rst, tick => tick,

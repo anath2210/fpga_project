@@ -1,78 +1,14 @@
--- game.vhd  --  OWNER: Person C (Game Logic)
+-- game.vhd  --  all the game rules. Runs ONCE PER FRAME, on the 'tick' pulse (60 Hz).
 --
--- GOAL: all the rules of the game. This module owns the game state (signal s) and updates
--- it ONCE PER VIDEO FRAME (when 'tick' = '1', about 60 times a second). Person B's renderer
--- reads the state through the 'gs' output; it never changes it.
+-- Pattern used everywhere in this file:
+--     v := s;          -- copy the state into a variable (a variable changes immediately)
+--     ... change v step by step ...
+--     s <= v;          -- publish the new state at the end of the frame
+-- The renderer only ever sees s, so it never sees a half-finished frame.
 --
--- THE PATTERN (already written for you below, understand it first):
---     v := s;              -- copy the current state into a variable
---     ... change v ...     -- ordinary sequential code, like software
---     s <= v;              -- write the new state back, once, at the end
--- Because this runs only on 'tick', one frame = one step of your game. All speeds below are
--- measured in frames (1 frame = 1/60 s).
---
--- THE RULES to implement (in this order; test each before moving on):
---
--- gstate = 0  (PLAYING)
---   M1  PLAYER MOVEMENT + DIGGING
---       - Read k_up / k_down / k_left / k_right (priority in that order if several pressed).
---       - Set v.pdir to the pressed direction (even if he can't move that way).
---       - Count v.pcnt up to MOVE_FRAMES; only when it is reached may he step one cell.
---       - Step with dir_dx / dir_dy if player_ok(v, nx, ny). Moving INTO a cell digs it:
---         v.dirt(ny*COLS + nx) := '0'. Reset v.pcnt to 0 after a step.
---   M2  PUMP (when k_pump = '1'; the player can't move while pumping)
---       - Walk outward up to 2 cells in direction v.pdir. Stop at the first cell where
---         enemy_ok(v, cx, cy, false) is false (dirt, rock or border). Remember how far
---         it got (v.hlen) and whether a live enemy is in one of those cells (the target).
---       - If there is a target: count v.pcool up; every PUMP_FRAMES frames add 1 to
---         v.einfl(target). When it reaches 4 the enemy pops: v.ealive(target) := '0'.
---         Also set v.ecnt(target) := 0 while it is being pumped so it can't deflate or move.
---       - If not pumping, set v.hlen := 0 and v.pcool := 0.
---   M3  ENEMIES (for each i in 0 to 3 that is alive)
---       - If inflated (v.einfl(i) > 0) it is frozen and, unless it is the one being pumped,
---         deflates by 1 every DEFLATE_FRAMES frames (use v.ecnt(i) as the timer).
---       - Otherwise count v.ecnt(i) up; when it reaches ENEMY_FRAMES reset it and move:
---             r := enemy_step(v, i);
---             v.ex(i) := r.nx;  v.ey(i) := r.ny;  v.eghost(i) := r.ghost;
---         (enemy_step comes from Person A's ai_pkg. Until it exists it just returns the
---          current position, so enemies stand still: fine for testing everything else.)
---   M4  ROCKS (for each j in 0 to 1), a little state machine in v.rstate(j):
---       0 still    : if the cell below is open (enemy_ok(v, rx, ry+1, false)) -> state 1, timer 0
---       1 wobbling : count v.rtimer(j); after WOBBLE_FRAMES -> state 2, timer 0
---       2 falling  : count v.rtimer(j); every FALL_FRAMES frames try to move down one cell:
---                      if the cell below is open -> v.ry(j) := ry + 1, and
---                         * if the player is in that cell he is crushed (remember this)
---                         * any live enemy in that cell dies (v.ealive(i) := '0')
---                      else the rock has landed -> state 0
---   M5  DEATH / WIN (end of the PLAYING branch)
---       - Dead if a live enemy is in the player's cell, or a rock crushed him.
---         Then: v.gstate := 1; v.gtimer := DEAD_FRAMES; v.hlen := 0; v.lives := v.lives - 1.
---       - Otherwise, if no enemy is alive: v.gstate := 3 (win).
---
--- gstate = 1  (JUST DIED, short pause)
---   - Count v.gtimer down to 0. Then: if v.lives = 0 -> v.gstate := 2 (game over);
---     else respawn: player back to (PLAYER_X0, PLAYER_Y0), pdir 1, timers/hlen 0;
---     every enemy back to (EX0(i), EY0(i)) with einfl, eghost, ecnt = 0; v.gstate := 0.
---     (Rocks and dirt stay as they are.)
---
--- gstate = 2 or 3  (GAME OVER / WIN)
---   - When k_start = '1', restart: keep the random bits, v := INIT, v.lfsr := the saved bits.
---
--- Constants for the numbers are below. Tune them while playing (faster / slower).
--- Helper functions you can use (all in digger_pkg): in_bounds, has_rock, enemy_ok,
--- player_ok, dir_dx, dir_dy.
---
--- HOW TO TEST: tb_game.vhd is a ready-to-extend testbench; simulating the game logic in
--- Vivado's simulator is much faster than rebuilding the bitstream. Write a check for each
--- milestone there, then confirm on the real screen once the renderer works.
---
--- GOTCHAS:
---   * Integer signals/variables have a RANGE (see digger_pkg). Assigning a value outside
---     the range is an error in simulation. E.g. never set v.px to -1 or 20: check
---     player_ok / in_bounds BEFORE you assign.
---   * Only assign v.dirt(...) with an index you have checked is inside the playfield.
---   * Everything happens in ONE clock cycle per frame, so order matters: e.g. decide the
---     pump target BEFORE the enemies' deflate logic uses it.
+-- ORDER OF ONE FRAME (gstate = 0, playing):
+--     random numbers -> player (move / dig / pump) -> enemies -> rocks -> vegetable
+--     -> collisions that kill the player -> score -> round clear / death
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
@@ -84,277 +20,442 @@ entity game is
 	port(
 		clk     : in  std_logic;
 		rst     : in  std_logic;
-		tick    : in  std_logic;               -- one pulse per frame
-		k_up    : in  std_logic;               -- debounced buttons, '1' = pressed
+		tick    : in  std_logic;
+		k_up    : in  std_logic;
 		k_down  : in  std_logic;
 		k_left  : in  std_logic;
 		k_right : in  std_logic;
 		k_pump  : in  std_logic;
 		k_start : in  std_logic;
-		gs      : out game_state_t             -- the state, read by the renderer
+		gs      : out game_state_t
 	);
 end game;
 
 architecture arch of game is
-	constant INIT : game_state_t := make_init;
-	signal s : game_state_t := INIT;
-
-	-- tuning (frames; 1 frame = 1/60 s)  --  TODO(C): adjust while playing
-	constant MOVE_FRAMES    : integer := 7;    -- player: one cell per 7 frames
-	constant PUMP_FRAMES    : integer := 10;   -- frames per inflation step
-	constant DEFLATE_FRAMES : integer := 45;   -- frames per deflation step
-	constant ENEMY_FRAMES   : integer := 16;   -- enemy: one cell per 16 frames
-	constant WOBBLE_FRAMES  : integer := 30;   -- rock wobble before falling
-	constant FALL_FRAMES    : integer := 5;    -- rock: one cell per 5 frames
-	constant DEAD_FRAMES    : integer := 90;   -- pause after dying
+	signal s : game_state_t;
+	-- the keys are copied into flip-flops every clock; the game logic only ever reads the copies
+	signal q_up, q_down, q_left, q_right, q_pump, q_start : std_logic := '0';
 begin
 	gs <= s;
 
 	process(clk)
-		variable v  : game_state_t;
-		variable lf : std_logic_vector(15 downto 0);
-		-- TODO(C): declare the extra variables you need (wanted direction, new cell nx/ny,
-		--          pump target and length, an enemy-move record "r : enemy_move_t",
-		--          a 'crushed' flag, alive count, ...).
-		variable nx, ny    : integer;
-		variable cx, cy    : integer;
-		variable target_idx: integer;
-		variable has_target: boolean;
-		variable r         : enemy_move_t;
-		variable crushed   : boolean;
-		variable enemies_alive : boolean;
+	begin
+		if rising_edge(clk) then
+			q_up <= k_up;  q_down <= k_down;  q_left <= k_left;
+			q_right <= k_right;  q_pump <= k_pump;  q_start <= k_start;
+		end if;
+	end process;
 
+	process(clk)
+		variable v : game_state_t;
+
+		-- PLAYER
+		procedure do_player is
+			variable want    : integer range -1 to 3;
+			variable nd      : integer range 0 to 3;
+			variable aligned : boolean;
+			variable can     : boolean;
+			variable hr      : rect_t;
+			variable lx, ly  : integer;
+			variable i       : integer;
+			variable c, r    : integer;
+		begin
+			aligned := (v.px mod TILE = 0) and (v.py mod TILE = 0);
+
+			if q_pump = '1' then
+				-- pumping the digger stands still and the hose grows
+				for k in 1 to HOSE_STEP loop
+					if v.hlen < HOSE_MAX then
+						v.hlen := v.hlen + 1;
+						lx := hose_tip_x(v) - dir_dx(v.pdir);    -- last pixel of the hose
+						ly := hose_tip_y(v) - dir_dy(v.pdir);
+						if not hose_cell_ok(v, cell_of(lx), cell_of(ly)) then
+							v.hlen := v.hlen - 1;                -- dirt, rock or edge stop growing
+							exit;
+						end if;
+					end if;
+				end loop;
+
+				-- does the hose touch an enemy
+				v.pump_hit := -1;
+				if v.hlen > 0 then
+					hr := hose_rect(v);
+					for e in 0 to NUM_ENEMIES - 1 loop
+						if v.ealive(e) = '1' and v.pump_hit < 0 and rects_overlap(hr, enemy_box(v, e)) then
+							v.pump_hit := e;
+						end if;
+					end loop;
+				end if;
+
+				if v.pump_hit >= 0 then
+					i := v.pump_hit;
+					v.ecnt(i)    := DEFLATE_FRAMES;       -- being pumped it does not shrink
+					v.eghost(i)  := 0;                    -- a pumped ghost is a normal enemy again
+					v.ebreath(i) := 0;
+					if v.pcool >= PUMP_FRAMES then
+						v.pcool := 0;
+						if v.einfl(i) = 3 then            -- 4th pump pops
+							v.ealive(i) := '0';
+							v.einfl(i)  := 0;
+							v.gain := v.gain + pump_pts(v.ekind(i), (v.ey(i) + 8) / TILE,
+							                            v.pdir = 1 or v.pdir = 3);
+							v.pump_hit := -1;
+							v.hlen := 0;
+						else
+							v.einfl(i) := v.einfl(i) + 1;
+						end if;
+					elsif v.pcool < 31 then
+						v.pcool := v.pcool + 1;
+					end if;
+				end if;
+			else
+				-- walking
+				v.hlen := 0;
+				v.pump_hit := -1;
+				v.pcool := PUMP_FRAMES;                   -- the first pump of a hit is immediate
+
+				want := -1;
+				if    q_up    = '1' then want := 0;
+				elsif q_down  = '1' then want := 2;
+				elsif q_left  = '1' then want := 3;
+				elsif q_right = '1' then want := 1;
+				end if;
+
+				if want >= 0 then
+					-- changing axis is only allowed exactly on a cell
+					if want = v.pdir or want = opposite(v.pdir) or aligned then
+						nd := want;
+					else
+						nd := v.pdir;                     -- keep going until we are on a cell
+					end if;
+					v.pdir := nd;
+
+					v.pacc := v.pacc + PSPD;
+					if v.pacc >= 16 then
+						v.pacc := v.pacc - 16;
+						can := true;
+						if v.px mod TILE = 0 and v.py mod TILE = 0 then
+							can := player_cell_ok(v, v.px / TILE + dir_dx(nd), v.py / TILE + dir_dy(nd));
+						elsif nd = 1 or nd = 3 then
+							if v.px mod TILE = 0 then
+								can := player_cell_ok(v, v.px / TILE + dir_dx(nd), v.py / TILE);
+							end if;
+						else
+							if v.py mod TILE = 0 then
+								can := player_cell_ok(v, v.px / TILE, v.py / TILE + dir_dy(nd));
+							end if;
+						end if;
+						if can then
+							v.px := v.px + dir_dx(nd);
+							v.py := v.py + dir_dy(nd);
+						end if;
+					end if;
+
+					-- digging: the cell under the middle of the digger becomes tunnel
+					c := (v.px + 8) / TILE;
+					r := (v.py + 8) / TILE;
+					if r >= ROW_DIRT0 and r <= ROW_DIRT1 then
+						v.dirt(r * COLS + c) := '0';
+					end if;
+				end if;
+			end if;
+		end procedure;
+
+		-- ENEMIES
+		procedure do_enemies is
+			variable dec     : edec_t;
+			variable r8      : std_logic_vector(7 downto 0);
+			variable aligned : boolean;
+			variable moving  : boolean;
+			variable nx, ny  : integer;
+			variable spd     : integer;
+		begin
+			for i in 0 to NUM_ENEMIES - 1 loop
+				if v.ealive(i) = '1' then
+					if v.einfl(i) > 0 then
+						-- inflation frozen, slowly shrinks again unless the hose still holds it
+						if v.pump_hit /= i then
+							if v.ecnt(i) > 0 then v.ecnt(i) := v.ecnt(i) - 1; end if;
+							if v.ecnt(i) = 0 then
+								v.einfl(i) := v.einfl(i) - 1;
+								v.ecnt(i)  := DEFLATE_FRAMES;
+							end if;
+						end if;
+
+					elsif v.ebreath(i) > 0 then
+						v.ebreath(i) := v.ebreath(i) - 1;      -- wind up, then flame
+
+					else
+						-- normal movement
+						r8 := std_logic_vector(unsigned(v.lfsr(7 downto 0)) + to_unsigned(i * 59, 8));
+						aligned := (v.ex(i) mod TILE = 0) and (v.ey(i) mod TILE = 0);
+						moving  := not aligned;
+
+						if v.eghost(i) > 1 then v.eghost(i) := v.eghost(i) - 1; end if;
+						if v.eghost(i) = 0 and v.eage(i) < 1023 then v.eage(i) := v.eage(i) + 1; end if;
+
+						if aligned then
+							-- a lone enemy always runs for the top-left corner as a ghost
+							if alive_count(v) = 1 and v.eghost(i) = 0 then
+								v.eghost(i) := 1;
+							end if;
+							-- ghost turns back to normal on the first open cell, once its time is up
+							if v.eghost(i) = 1 and alive_count(v) > 1 and
+							   v.dirt((v.ey(i) / TILE) * COLS + v.ex(i) / TILE) = '0' then
+								v.eghost(i) := 0;
+								v.eage(i) := ghost_delay(v.rnd) / 2;   -- walks a while before the next ghost trip
+							end if;
+
+							if alive_count(v) = 1 and v.ex(i) = 0 and v.ey(i) = ROW_SURF * TILE then
+								v.ealive(i) := '0';            -- escaped: no points
+							else
+								dec := enemy_decide(v, i, r8);
+								if dec.ghost and v.eghost(i) = 0 then
+									v.eghost(i) := GHOST_FRAMES;
+								end if;
+								if dec.breathe then
+									v.ebreath(i) := BREATH_FRAMES;
+								elsif dec.go then
+									v.edir(i) := dec.dir;
+									moving := true;
+								end if;
+							end if;
+						end if;
+
+						if moving and v.ealive(i) = '1' then
+							spd := enemy_spd(v.rnd, v.eghost(i) > 0);
+							v.eacc(i) := v.eacc(i) + spd;
+							if v.eacc(i) >= 16 then
+								v.eacc(i) := v.eacc(i) - 16;
+								nx := v.ex(i) + dir_dx(v.edir(i));
+								ny := v.ey(i) + dir_dy(v.edir(i));
+								if nx >= 0 and nx < PF_W - TILE + 1 and ny >= 0 and ny < PF_H - TILE + 1 then
+									v.ex(i) := nx;
+									v.ey(i) := ny;
+								end if;
+							end if;
+						end if;
+					end if;
+				end if;
+			end loop;
+		end procedure;
+
+		-- rocks
+		procedure do_rocks is
+			variable c, r   : integer;
+			variable landed : boolean;
+			variable rr     : rect_t;
+		begin
+			for j in 0 to NUM_ROCKS - 1 loop
+				c := v.rx(j) / TILE;
+				r := v.ry(j) / TILE;
+				case v.rstate(j) is
+					when 0 =>                                  -- sitting: is there a hole under it?
+						if r < ROW_DIRT1 and cell_open(v, c, r + 1) and not rock_in_cell(v, c, r + 1) then
+							v.rstate(j) := 1;
+							v.rtimer(j) := WOBBLE_FRAMES;
+						end if;
+
+					-- wobbling
+					when 1 =>
+						if v.rtimer(j) > 0 then
+							v.rtimer(j) := v.rtimer(j) - 1;
+						else
+							v.rstate(j) := 2;
+							v.rk(j) := 0;
+							v.dirt(r * COLS + c) := '0';       -- its own cell becomes open
+							if v.rdrops < NUM_ROCKS then
+								v.rdrops := v.rdrops + 1;
+							end if;
+							-- vegetable appears after the SECOND rock has dropped
+							if v.rdrops = 2 and v.vdone = '0' then
+								v.vstate := 1;
+								v.vtimer := VEG_FRAMES;
+								v.vdone  := '1';
+								v.dirt(VEG_ROW * COLS + VEG_COL) := '0';
+							end if;
+						end if;
+
+					when 2 =>                                  -- falling
+						landed := false;
+						for k in 1 to FALL_STEP loop
+							if not landed then
+								if v.ry(j) mod TILE = 0 then
+									c := v.rx(j) / TILE;
+									r := v.ry(j) / TILE;
+									if r >= ROW_DIRT1 or not cell_open(v, c, r + 1) or rock_in_cell(v, c, r + 1) then
+										landed := true;
+									end if;
+								end if;
+								if not landed then
+									v.ry(j) := v.ry(j) + 1;
+								end if;
+							end if;
+						end loop;
+
+						-- crush enemies and the player
+						rr.x0 := v.rx(j) + 1;  rr.x1 := v.rx(j) + 14;
+						rr.y0 := v.ry(j) + 1;  rr.y1 := v.ry(j) + 14;
+						for e in 0 to NUM_ENEMIES - 1 loop
+							if v.ealive(e) = '1' and rects_overlap(rr, enemy_box(v, e)) then
+								v.ealive(e) := '0';
+								v.einfl(e)  := 0;
+								if v.rk(j) < 7 then v.rk(j) := v.rk(j) + 1; end if;
+							end if;
+						end loop;
+						if rects_overlap(rr, player_box(v)) then
+							v.dead := '1';
+						end if;
+
+						if landed then
+							v.gain := v.gain + rock_pts(v.rk(j));
+							v.rstate(j) := 3;                  -- the rock breaks and disappears
+						end if;
+
+					when others => null;
+				end case;
+			end loop;
+		end procedure;
+
+		-- vegetable
+		procedure do_veg is
+			variable vr : rect_t;
+		begin
+			if v.vstate = 1 then
+				if v.vtimer > 0 then
+					v.vtimer := v.vtimer - 1;
+				else
+					v.vstate := 0;
+				end if;
+				vr.x0 := VEG_COL * TILE + 2;  vr.x1 := VEG_COL * TILE + 13;
+				vr.y0 := VEG_ROW * TILE + 2;  vr.y1 := VEG_ROW * TILE + 13;
+				if v.vstate = 1 and rects_overlap(vr, player_box(v)) then
+					v.gain   := v.gain + veg_pts(v.rnd);
+					v.vstate := 0;
+				end if;
+			end if;
+		end procedure;
+
+		-- score
+		procedure do_score is
+		begin
+			if v.gain > 0 then
+				v.score := add_pts(v.score, v.gain);
+				v.gain  := 0;
+				if score_val(v.score) > score_val(v.hiscore) then
+					v.hiscore := v.score;
+				end if;
+				if v.bonus(0) = '0' and score_val(v.score) >= 20000 then
+					v.bonus(0) := '1';
+					if v.lives < MAX_LIVES then v.lives := v.lives + 1; end if;
+				end if;
+				if v.bonus(1) = '0' and score_val(v.score) >= 60000 then
+					v.bonus(1) := '1';
+					if v.lives < MAX_LIVES then v.lives := v.lives + 1; end if;
+				end if;
+			end if;
+		end procedure;
+
+		variable fb  : std_logic;
+		variable hi  : digits_t;
+		variable lf  : std_logic_vector(15 downto 0);
+		variable pb  : rect_t;
 	begin
 		if rising_edge(clk) then
 			if rst = '1' then
-				s <= INIT;
+				s <= make_init;
 			elsif tick = '1' then
 				v := s;
 
-				-- 16-bit pseudo-random number generator (DONE): taps 16,14,13,11.
-				-- Person A's enemy AI reads v.lfsr for random choices.
-				v.lfsr := v.lfsr(14 downto 0) &
-				          (v.lfsr(15) xor v.lfsr(13) xor v.lfsr(12) xor v.lfsr(10));
+				for k in 1 to 8 loop
+					fb := v.lfsr(15) xor v.lfsr(13) xor v.lfsr(12) xor v.lfsr(10);
+					v.lfsr := v.lfsr(14 downto 0) & fb;
+				end loop;
 
 				case v.gstate is
 
+					-- playing
 					when 0 =>
-						-- TODO(C) M1: player movement + digging
-						if k_up = '1' then
-							v.pdir := 0;   -- 0 = up
-						elsif k_down = '1' then
-							v.pdir := 2;   -- 2 = down
-						elsif k_left = '1' then
-							v.pdir := 3;   -- 3 = left
-						elsif k_right = '1' then
-							v.pdir := 1;   -- 1 = right
-						end if;
+						v.dead := '0';
+						do_player;
+						do_enemies;
+						do_rocks;
+						do_veg;
 
-						if v.pcnt < MOVE_FRAMES - 1 then
-							v.pcnt := v.pcnt + 1;
-						elsif k_pump = '0' then
-							nx := v.px + dir_dx(v.pdir);
-							ny := v.py + dir_dy(v.pdir);
-							if player_ok(v, nx, ny) then
-								v.px := nx;
-								v.py := ny;
-								if in_bounds(nx, ny) then
-									v.dirt(ny * COLS + nx) := '0';
+						-- things that kill the digger
+						pb := player_box(v);
+						for e in 0 to NUM_ENEMIES - 1 loop
+							if v.ealive(e) = '1' then
+								if v.einfl(e) = 0 and rects_overlap(pb, enemy_box(v, e)) then
+									v.dead := '1';
 								end if;
-								v.pcnt := 0;
-							end if;
-						end if;
-
-						-- TODO(C) M2: pump
-						has_target := false;
-						target_idx := -1;
-
-						if k_pump = '1' then
-							v.pcnt := 0; -- no movement
-							
-							for step_i in 1 to 2 loop
-								cx := v.px + step_i * dir_dx(v.pdir);
-								cy := v.py + step_i * dir_dy(v.pdir);
-								
-								if not enemy_ok(v, cx, cy, false) then
-									v.hlen := step_i - 1;
-									exit;
-								else
-									v.hlen := step_i;
-									for i in 0 to v.ealive'high loop
-										if v.ealive(i) = '1' and v.ex(i) = cx and v.ey(i) = cy then
-											has_target := true;
-											target_idx := i;
-											exit;
-										end if;
-									end loop;
-								end if;
-							end loop;
-
-							if has_target then
-								v.ecnt(target_idx) := 0; -- freeze target enemy deflation/movement
-								if v.pcool < PUMP_FRAMES - 1 then
-									v.pcool := v.pcool + 1;
-								else
-									v.pcool := 0;
-									if v.einfl(target_idx) < 4 then
-										v.einfl(target_idx) := v.einfl(target_idx) + 1;
-										if v.einfl(target_idx) >= 4 then
-											v.ealive(target_idx) := '0'; -- pop enemy
-										end if;
-									end if;
-								end if;
-							else
-								v.pcool := 0;
-							end if;
-						else
-							v.hlen := 0;
-							v.pcool := 0;
-						end if;
-
-						-- TODO(C) M3: enemies
-						for i in 0 to v.ealive'high loop
-							if v.ealive(i) = '1' then
-
-								-- if not pumped, start deflating if needed
-								if (k_pump = '0') or (has_target = false) or (i /= target_idx) then
-									if v.einfl(i) > 0 then
-										-- Deflating over time if inflated
-										if v.ecnt(i) < DEFLATE_FRAMES - 1 then
-											v.ecnt(i) := v.ecnt(i) + 1;
-										else
-											v.ecnt(i) := 0;
-											v.einfl(i) := v.einfl(i) - 1;
-										end if;
-									else
-										-- if deflated, move when rdy
-										if v.ecnt(i) < ENEMY_FRAMES - 1 then
-											v.ecnt(i) := v.ecnt(i) + 1;
-										else
-											v.ecnt(i) := 0;
-											r := enemy_step(v, i);
-											v.ex(i) := r.nx;
-											v.ey(i) := r.ny;
-											v.eghost(i) := r.ghost;
-										end if;
-									end if;
+								if rects_overlap(pb, flame_rect(v, e)) then
+									v.dead := '1';
 								end if;
 							end if;
 						end loop;
 
-						-- TODO(C) M4: rocks
-						crushed := false;
-						for j in 0 to 1 loop
-							case v.rstate(j) is
-								when 0 => -- still
-									if enemy_ok(v, v.rx(j), v.ry(j) + 1, false) then
-										v.rstate(j) := 1;
-										v.rtimer(j) := 0;
-									end if;
+						do_score;
 
-								when 1 => -- wobbling
-									if v.rtimer(j) < WOBBLE_FRAMES - 1 then
-										v.rtimer(j) := v.rtimer(j) + 1;
-									else
-										v.rstate(j) := 2;
-										v.rtimer(j) := 0;
-									end if;
-
-								when 2 => -- falling
-									if v.rtimer(j) < FALL_FRAMES - 1 then
-										v.rtimer(j) := v.rtimer(j) + 1;
-									else
-										v.rtimer(j) := 0;
-										if enemy_ok(v, v.rx(j), v.ry(j) + 1, false) then
-											v.ry(j) := v.ry(j) + 1;
-											-- if rock crushes player
-											if v.rx(j) = v.px and v.ry(j) = v.py then
-												crushed := true;
-											end if;
-											-- if rock crushes enemy
-											for i in 0 to v.ealive'high loop
-												if v.ealive(i) = '1' and v.rx(j) = v.ex(i) and v.ry(j) = v.ey(i) then
-													v.ealive(i) := '0';
-												end if;
-											end loop;
-										else
-											v.rstate(j) := 0;
-										end if;
-									end if;
-
-								when others =>
-									v.rstate(j) := 0;
-							end case;
-						end loop;
-
-						-- TODO(C) M5: death / win check
-						for i in 0 to v.ealive'high loop
-							if v.ealive(i) = '1' and v.ex(i) = v.px and v.ey(i) = v.py and v.einfl(i) = 0 then
-								crushed := true;
-							end if;
-						end loop;
-
-						if crushed then
+						if v.dead = '1' then
 							v.gstate := 1;
 							v.gtimer := DEAD_FRAMES;
 							v.hlen := 0;
-							v.lives := v.lives - 1;
-						else
-							-- win condition (no enemies alive)
-							enemies_alive := false;
-							for i in 0 to v.ealive'high loop
-								if v.ealive(i) = '1' then
-									enemies_alive := true;
-								end if;
-							end loop;
-							if not enemies_alive then
-								v.gstate := 3; -- win
-							end if;
+							v.pump_hit := -1;
+							if v.lives > 0 then v.lives := v.lives - 1; end if;
+						elsif alive_count(v) = 0 then
+							v.gstate := 3;
+							v.gtimer := CLEAR_FRAMES;
+							v.hlen := 0;
+							v.pump_hit := -1;
 						end if;
 
-					
-					when 1 => 
-						-- TODO(C): death pause, then respawn or game over
-
-						-- short pause after dying
+					-- digger just died
+					when 1 =>
 						if v.gtimer > 0 then
 							v.gtimer := v.gtimer - 1;
+						elsif v.lives = 0 then
+							v.gstate := 2;
 						else
-							-- if no lives, game over
-							if v.lives = 0 then
-								v.gstate := 2;
-							else
-								-- if lives, respawn player & reset alive enemies
-								v.px := PLAYER_X0;
-								v.py := PLAYER_Y0;
-								v.pdir := 1;
-								v.pcnt := 0;
-								v.pcool := 0;
-								v.hlen := 0;
-
-								for i in 0 to v.ealive'high loop
-									if v.ealive(i) = '1' then
-										v.ex(i) := EX0(i);
-										v.ey(i) := EY0(i);
-										v.einfl(i) := 0;
-										v.eghost(i) := 0;
-										v.ecnt(i) := 0;
-									end if;
-								end loop;
-
-								v.gstate := 0;
-							end if;
+							v := respawn(v);
+							v.gstate := 4;
+							v.gtimer := READY_FRAMES;
 						end if;
 
-					when others =>
-						-- TODO(C): game over / win: restart when k_start = '1'
-						if k_start = '1' then
+					-- game over
+					when 2 =>
+						if q_start = '1' then
+							hi := v.hiscore;
 							lf := v.lfsr;
-							v := INIT;
+							v := make_init;
+							v.hiscore := hi;
 							v.lfsr := lf;
 						end if;
 
+					when 3 =>                                  -- round cleared
+						if v.gtimer > 0 then
+							v.gtimer := v.gtimer - 1;
+						else
+							if v.rnd < 256 then v.rnd := v.rnd + 1; end if;
+							v := new_round(v);
+						end if;
+
+					when others =>                             -- "get ready" 
+						if v.gtimer > 0 then
+							v.gtimer := v.gtimer - 1;
+						else
+							v.gstate := 0;
+						end if;
 				end case;
+
+				--  restart: new game, but keep the high score and random bits
+				if q_start = '1' then
+					hi := v.hiscore;
+					lf := v.lfsr;
+					v := make_init;
+					v.hiscore := hi;
+					v.lfsr := lf;
+				end if;
 
 				s <= v;
 			end if;
