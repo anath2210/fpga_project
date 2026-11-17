@@ -44,8 +44,24 @@ package body level_pkg is
 
 		-- TODO(B): carve the player's corridor, e.g.
 		--   for x in 8 to 12 loop s.dirt(1*COLS + x) := '0'; end loop;
+		for y in 1 to PLAYER_Y0 loop
+			s.dirt(y*COLS + PLAYER_X0) := '0';
+		end loop;
+		for x in -1 to 1 loop
+			s.dirt(PLAYER_Y0*COLS + PLAYER_X0 + x) := '0';
+		end loop;
+
 		-- TODO(B): carve one pocket for each enemy (around EX0(i), EY0(i)).
+		for j in 0 to 3 loop 
+			for x in -1 to 1 loop
+				s.dirt(EY0(j)*COLS + EX0(j) + x) := '0';
+			end loop;
+		end loop;
+
 		-- TODO(B): carve the two rock cells (the same cells you give s.rx / s.ry below).
+		for k in 0 to 1 loop
+			s.dirt(ROCK_Y0(k)*COLS + ROCK_X0(k)) := '0';
+		end loop;
 
 		s.gstate := 0;
 		s.gtimer := 0;
@@ -62,8 +78,8 @@ package body level_pkg is
 		s.eghost := (others => 0);
 		s.ecnt   := (others => 0);
 		s.ealive := (others => '1');
-		s.rx     := (6, 13);          -- TODO(B): choose your rock positions
-		s.ry     := (4, 9);
+		s.rx     := ROCK_X0;          -- TODO(B): choose your rock positions
+		s.ry     := ROCK_Y0;
 		s.rstate := (others => 0);
 		s.rtimer := (others => 0);
 		s.lfsr   := x"ACE1";          -- must never be all zeros

@@ -67,13 +67,14 @@ end renderer;
 architecture arch of renderer is
 begin
 	process(clk)
-		variable col, row   : integer;
-		variable sx, sy     : integer;
-		variable sxw        : integer;                 -- sx after mirroring / wobble
-		variable dxx, dyy   : integer;
-		variable kind       : integer;
-		variable p          : std_logic_vector(6 downto 0);
-		variable color      : std_logic_vector(5 downto 0);
+		variable col, row    : integer;
+		variable sx, sy      : integer;
+		variable sxw         : integer;                -- sx after mirroring / wobble
+		variable dxx, dyy    : integer;
+		variable kind        : integer;
+		variable p           : std_logic_vector(6 downto 0);
+		variable color       : std_logic_vector(5 downto 0);
+		variable enemy_count : integer range 0 to 4;
 	begin
 		if rising_edge(clk) then
 			hs_o <= hs;
@@ -102,10 +103,119 @@ begin
 				end if;
 
 				-- TODO(B): pump line layer
+				if gs.hlen > 0 then
+					dxx := col - gs.px;
+					dyy := row - gs.py;
+					if gs.pdir = 1 then 
+						if dyy = 0 and dxx >= 1 and dxx <= gs.hlen then
+							p := sprite_px(K_HARP_H, sx, sy);
+							if p(6) = '1' then
+								color := p(5 downto 0);				 -- harpoon right
+							end if;
+						end if;
+					elsif gs.pdir = 3 then 
+						if dyy = 0 and dxx >= -gs.hlen and dxx <= -1 then
+							p := sprite_px(K_HARP_H, sx, sy);
+							if p(6) = '1' then
+								color := p(5 downto 0);				 -- harpoon left
+							end if;
+						end if;
+					elsif gs.pdir = 0 then
+						if dxx = 0 and dyy >= -gs.hlen and dyy <= -1 then
+							p := sprite_px(K_HARP_V, sx, sy);
+							if p(6) = '1' then
+								color := p(5 downto 0);				 -- harpoon up
+							end if;
+						end if;
+					else 
+						if dxx = 0 and dyy >= 1 and dyy <= gs.hlen then
+							p := sprite_px(K_HARP_V, sx, sy);
+							if p(6) = '1' then
+								color := p(5 downto 0);				 -- harpoon down
+							end if;
+						end if;
+					end if;
+				end if;
+
 				-- TODO(B): rocks layer
+				for j in 0 to 1 loop
+					if col = gs.rx(j) and row = gs.ry(j) then
+						sxw := sx;
+						if gs.rstate(j) = 1 then
+							if (gs.rtimer(j) mod 8) >= 4 then
+								sxw := (sx + 1) mod 8;				-- wobble
+							end if;
+						end if;
+						p := sprite_px(K_ROCK, sxw, sy);
+						if p(6) = '1' then
+							color := p(5 downto 0);				 	-- rock
+						end if;
+					end if;
+				end loop;
+
 				-- TODO(B): enemies layer
+				for i in 0 to 3 loop
+					if (gs.ealive(i) = '1' and col = gs.ex(i) and row = gs.ey(i)) then
+						if gs.einfl(i) >= 2 then
+							p := sprite_px(K_BIG, sx, sy);
+							if p(6) = '1' then
+								color := p(5 downto 0);				 -- big enemy
+							end if;
+						elsif gs.einfl(i) = 1 then
+							p := sprite_px(K_MID, sx, sy);
+							if p(6) = '1' then
+								color := p(5 downto 0);				 -- mid enemy
+							end if;
+						elsif gs.eghost(i) > 0 or gs.dirt(row*COLS + col) = '1' then
+							p := sprite_px(K_GHOST, sx, sy);
+							if p(6) = '1' then
+								color := p(5 downto 0);				 -- ghost enemy
+							end if;
+						else
+							p := sprite_px(K_BLOB, sx, sy);
+							if p(6) = '1' then
+								color := p(5 downto 0);				 -- small enemy
+							end if;
+						end if;
+					end if;
+				end loop;
+
 				-- TODO(B): player layer
+				if col = gs.px and row = gs.py then
+					if gs.gstate /= 1 or (gs.gtimer mod 8) < 4 then	 -- blink
+						sxw := sx;
+						if gs.pdir = 3 then
+							sxw := 7 - sx;  						 -- face left
+						end if;
+						p := sprite_px(K_PLAYER, sxw, sy);
+						if p(6) = '1' then
+							color := p(5 downto 0);  				 -- player
+						end if;
+					end if;
+				end if;
+
 				-- TODO(B): HUD layer
+				if row = 0 then
+					if col < gs.lives then
+						p := sprite_px(K_PLAYER, sx, sy);
+						if p(6) = '1' then
+							color := p(5 downto 0);  				 -- life icon
+						end if;
+					end if;
+					enemy_count := 0;									
+					for i in 0 to 3 loop
+						if gs.ealive(i) = '1' then
+							enemy_count := enemy_count + 1;			 -- count enemies
+						end if;
+					end loop;
+					if col >= COLS - enemy_count then
+						p := sprite_px(K_BLOB, sx, sy);
+						if p(6) = '1' then
+							color := p(5 downto 0);  				 -- enemy icon
+						end if;
+					end if;
+				end if;
+
 				-- Pattern for every layer:
 				--     p := sprite_px(kind, sx, sy);
 				--     if p(6) = '1' then color := p(5 downto 0); end if;

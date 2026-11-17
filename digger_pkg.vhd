@@ -13,8 +13,8 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
 package digger_pkg is
-	constant COLS : integer := 20;   -- the playfield is 20 x 15 cells
-	constant ROWS : integer := 15;   -- row 0 = sky / HUD strip, rows 1..14 = dirt area
+	constant COLS : integer := 14;   -- the playfield is 14 x 18 cells
+	constant ROWS : integer := 18;   -- row 0 = sky / HUD strip, rows 1..16 = dirt area
 	                                 -- each cell is 32x32 screen pixels (an 8x8 sprite, 4x zoom)
 
 	-- Sprite kinds (used by sprite_pkg.sprite_px and the renderer)
@@ -28,11 +28,11 @@ package digger_pkg is
 	constant K_HARP_V : integer := 7;   -- pump line, vertical piece
 	constant K_DIRT   : integer := 8;
 
-	type ex_arr is array (0 to 2) of integer range 0 to 19;   -- 3 enemies
-	type ey_arr is array (0 to 2) of integer range 0 to 14;
-	type ei_arr is array (0 to 2) of integer range 0 to 4;
-	type eg_arr is array (0 to 2) of integer range 0 to 63;
-	type ec_arr is array (0 to 2) of integer range 0 to 255;
+	type ex_arr is array (0 to 3) of integer range 0 to 19;   -- 4 enemies
+	type ey_arr is array (0 to 3) of integer range 0 to 14;
+	type ei_arr is array (0 to 3) of integer range 0 to 4;
+	type eg_arr is array (0 to 3) of integer range 0 to 63;
+	type ec_arr is array (0 to 3) of integer range 0 to 255;
 	type rx_arr is array (0 to 1) of integer range 0 to 19;   -- 2 rocks
 	type ry_arr is array (0 to 1) of integer range 0 to 14;
 	type rs_arr is array (0 to 1) of integer range 0 to 2;
@@ -51,13 +51,13 @@ package digger_pkg is
 		pdir   : integer range 0 to 3;     -- facing: 0 up, 1 right, 2 down, 3 left
 		pcnt   : integer range 0 to 31;    -- player move timer (frames since last step)
 		pcool  : integer range 0 to 31;    -- pump timer (frames since last inflation step)
-		hlen   : integer range 0 to 3;     -- pump line length in cells; 0 = pump line not shown
+		hlen   : integer range 0 to 2;     -- pump line length in cells; 0 = pump line not shown
 		ex     : ex_arr;                   -- enemy cell x
 		ey     : ey_arr;                   -- enemy cell y
 		einfl  : ei_arr;                   -- enemy inflation 0..3 (reaching 4 = popped)
 		eghost : eg_arr;                   -- ghost-mode moves left (0 = not a ghost)
 		ecnt   : ec_arr;                   -- enemy move / deflate timer
-		ealive : std_logic_vector(0 to 2); -- '1' = enemy exists
+		ealive : std_logic_vector(0 to 3); -- '1' = enemy exists
 		rx     : rx_arr;                   -- rock cell x
 		ry     : ry_arr;                   -- rock cell y
 		rstate : rs_arr;                   -- 0 = still, 1 = wobbling, 2 = falling
@@ -66,10 +66,12 @@ package digger_pkg is
 	end record;
 
 	-- Where things start (used by level_pkg and by game.vhd when respawning)
-	constant EX0 : ex_arr := (3, 16, 10);
-	constant EY0 : ey_arr := (6, 8, 12);
-	constant PLAYER_X0 : integer := 10;
-	constant PLAYER_Y0 : integer := 1;
+	constant EX0 : ex_arr := (1, 11, 3, 9);
+	constant EY0 : ey_arr := (4, 4, 12, 14);
+	constant PLAYER_X0 : integer := 6;
+	constant PLAYER_Y0 : integer := 9;
+	constant ROCK_X0 : rx_arr := (4, 10);
+	constant ROCK_Y0 : ry_arr := (5, 11);
 
 	-- Direction helpers: direction code -> step in x / y (up = row-1, down = row+1)
 	function dir_dx(d : integer) return integer;

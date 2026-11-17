@@ -62,6 +62,94 @@ package body sprite_pkg is
 
 	-- TODO(B): constant S_PLAYER : sprite_t := ( 8 strings of 8 characters );
 	-- TODO(B): constant S_BLOB, S_MID, S_BIG, S_GHOST, S_ROCK, S_HARP_H, S_HARP_V ...
+	
+	-- 1 = white, 2 = blue, 3 = red
+	constant S_PLAYER : sprite_t := ( 
+		"00111100",
+		"01122110",
+		"21222200",
+		"21222233",
+		"21122333",
+		"21111100",
+		"01000100",
+		"02200220");
+
+	-- 1 = red, 2 = black
+	constant S_BLOB : sprite_t := ( 
+		"00000000",
+		"00111100",
+		"01111110",
+		"01211210",
+		"01111110",
+		"01111110",
+		"00111100",
+		"00000000");
+
+	-- 1 = red, 2 = black
+	constant S_MID : sprite_t := ( 
+		"00111100",
+		"01111110",
+		"11211211",
+		"11211211",
+		"11111111",
+		"11111111",
+		"01111110",
+		"00111100");
+
+	-- 1 = red, 2 = black
+	constant S_BIG : sprite_t := ( 
+		"11111111",
+		"11111111",
+		"12211221",
+		"12211221",
+		"11111111",
+		"11111111",
+		"11111111",
+		"11111111");
+
+	-- 1 = white, 2 = black
+	constant S_GHOST : sprite_t := ( 
+		"00000000",
+		"00000000",
+		"01100110",
+		"01200210",
+		"00000000",
+		"00000000",
+		"00000000",
+		"00000000");
+
+	-- 1 = light gray, 2 = slate blue, 3 = dark gray
+	constant S_ROCK : sprite_t := ( 
+		"00111100",
+		"01311110",
+		"22113321",
+		"21121111",
+		"11111121",
+		"12111221",
+		"13111131",
+		"01122110");
+
+	-- 1 = light gray, 2 = dark gray
+	constant S_HARP_H : sprite_t := ( 
+		"00000000",
+		"00000000",
+		"00000000",
+		"12112112",
+		"21121121",
+		"00000000",
+		"00000000",
+		"00000000");
+
+	-- 1 = light gray, 2 = dark gray
+	constant S_HARP_V : sprite_t := ( 
+		"00021000",
+		"00012000",
+		"00011000",
+		"00021000",
+		"00012000",
+		"00011000",
+		"00021000",
+		"00012000");
 
 	-- Returns {opaque, R1 R0 G1 G0 B1 B0} for pixel (sx, sy) of sprite 'kind'
 	function sprite_px(kind, sx, sy : integer) return std_logic_vector is
@@ -72,9 +160,28 @@ package body sprite_pkg is
 		-- Step 1: pick the character for this pixel.
 		-- S_DIRT(sy)(sx + 1) means: row sy of the sprite, character number sx+1 (strings start at 1).
 		-- TODO(B): turn this into a  case kind is ... when K_PLAYER => ch := S_PLAYER(sy)(sx+1); ...
-		if kind = K_DIRT then
-			ch := S_DIRT(sy)(sx + 1);
-		end if;
+		case kind is
+			when K_DIRT =>
+				ch := S_DIRT(sy)(sx + 1);
+			when K_PLAYER =>
+				ch := S_PLAYER(sy)(sx + 1);
+			when K_BLOB =>
+				ch := S_BLOB(sy)(sx + 1);
+			when K_MID =>
+				ch := S_MID(sy)(sx + 1);
+			when K_BIG =>
+				ch := S_BIG(sy)(sx + 1);
+			when K_GHOST =>
+				ch := S_GHOST(sy)(sx + 1);
+			when K_ROCK =>
+				ch := S_ROCK(sy)(sx + 1);
+			when K_HARP_H =>
+				ch := S_HARP_H(sy)(sx + 1);
+			when K_HARP_V =>
+				ch := S_HARP_V(sy)(sx + 1);
+			when others =>
+				ch := '0';
+		end case;
 
 		-- Step 2: character -> number 0..3
 		c := character'pos(ch) - character'pos('0');
@@ -84,11 +191,65 @@ package body sprite_pkg is
 			res(6) := '1';   -- opaque
 			-- TODO(B): make this a  case kind is ...  with a palette per sprite kind.
 			-- Only the dirt palette exists so far:
-			if c = 1 then
-				res(5 downto 0) := rgb6(2, 1, 0);   -- brown
-			else
-				res(5 downto 0) := rgb6(1, 0, 0);   -- dark brown
-			end if;
+			case kind is 
+				when K_DIRT =>
+					if c = 1 then
+						res(5 downto 0) := rgb6(2, 1, 0);   -- brown
+					else
+						res(5 downto 0) := rgb6(1, 0, 0);   -- dark brown
+					end if;
+				when K_PLAYER =>
+					case c is
+						when 1 =>
+							res(5 downto 0) := rgb6(3, 3, 3); -- white
+						when 2 =>
+							res(5 downto 0) := rgb6(0, 2, 3); -- light blue
+						when 3 =>
+							res(5 downto 0) := rgb6(3, 0, 0); -- red
+						when others =>
+							null;
+					end case;
+				when K_BLOB | K_MID | K_BIG =>
+					case c is
+						when 1 =>
+							res(5 downto 0) := rgb6(3, 0, 0); -- red
+						when 2 =>
+							res(5 downto 0) := rgb6(0, 0, 0); -- black
+						when others =>
+							null;
+					end case;
+				when K_GHOST =>
+					case c is
+						when 1 =>
+							res(5 downto 0) := rgb6(3, 3, 3); -- white
+						when 2 =>
+							res(5 downto 0) := rgb6(0, 0, 0); -- black
+						when others =>
+							null;
+					end case;
+				when K_ROCK =>
+					case c is
+						when 1 =>
+							res(5 downto 0) := rgb6(2, 2, 2); -- light gray
+						when 2 =>
+							res(5 downto 0) := rgb6(1, 1, 2); -- slate blue
+						when 3 =>
+							res(5 downto 0) := rgb6(1, 1, 1); -- dark gray
+						when others =>
+							null;
+					end case;
+				when K_HARP_H | K_HARP_V =>
+					case c is
+						when 1 =>
+							res(5 downto 0) := rgb6(2, 2, 2); -- light gray
+						when 2 =>
+							res(5 downto 0) := rgb6(1, 1, 1); -- dark gray
+						when others =>
+							null;
+					end case;
+				when others => 
+					null;
+			end case;
 		end if;
 		return res;
 	end function;
