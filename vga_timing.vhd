@@ -39,16 +39,29 @@ entity vga_timing is
 end vga_timing;
 
 architecture arch of vga_timing is
-	-- TODO(A): signal h : integer range 0 to 799 := 0;
-	--          signal v : integer range 0 to 524 := 0;
+	signal h : integer range 0 to 799 := 0;
+	signal v : integer range 0 to 524 := 0;
 begin
-	-- TODO(A): the counting process goes here.
+	process(clk)
+	begin
+		if rising_edge(clk) then
+			if h = 799 then
+				h <= 0;
+				if v = 524 then
+					v <= 0;
+				else
+					v <= v+ 1;
+				end if;
+			else
+				h <= h + 1;
+			end if;
+		end if;
+	end process;
 
-	-- PLACEHOLDERS (delete once implemented):
-	hs     <= '1';
-	vs     <= '1';
-	active <= '0';
-	tick   <= '0';
-	px     <= (others => '0');
-	py     <= (others => '0');
+	hs <= '0' when (h >= 656 and h < 752) else '1';
+	vs <= '0' when (v >= 490 and v <492) else '1';
+	active <= '1' when (h < 640 and v < 480) else '0';
+	tick <= '1' when (h = 0 and v = 480) else '0';
+	px <= to_unsigned(h, 10);
+	py <= to_unsigned(v, 10);
 end arch;
