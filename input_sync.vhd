@@ -34,13 +34,27 @@ end input_sync;
 
 architecture arch of input_sync is
 	signal raw : std_logic;
-	-- TODO(A): signals for the 2-flip-flop synchronizer, the stable value and the counter
-	--          (counter: integer range 0 to DEBOUNCE).
+	signal m, s : std_logic := '0';
+	signal stable : std_logic := '0';
+	signal cnt : integer range 0 to DEBOUNCE := 0;
 begin
 	raw <= not din when ACTIVE_LOW else din;
 
-	-- TODO(A): the synchronizer + debounce process goes here.
+	process(clk)
+	begin
+		if rising_edge(clk) then
+			m <= raw;
+			s <= m;
+			if s = stable then
+				cnt <= 0;
+			elsif cnt = DEBOUNCE then
+				stable <= s;
+				cnt <= 0;
+			else
+				cnt <= cnt + 1;
+			end if;
+		end if;
+	end process;
 
-	-- PLACEHOLDER (delete once implemented): no sync, no debounce
-	dout <= raw;
+	dout <= stable;
 end arch;
