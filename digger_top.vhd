@@ -21,16 +21,23 @@
 --      (then it blinks at 30 Hz) if you need to check the frame tick.
 --   3. When B and C have files ready, pull everything together and make sure the whole
 --      project builds. You are the person who runs the final integration.
+-- digger_top.vhd
+-- Top level for the Cmod A7-35T. Everything after the MMCM runs on the 25 MHz pixel clock.
+--
+--   sysclk (12 MHz) -> clk_gen -> pix_clk
+--   vga_timing  -> counters, sync, 60 Hz frame tick
+--   input_sync  -> debounced buttons
+--   game        -> state, updated once per frame
+--   renderer    -> color for each pixel
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 use work.digger_pkg.all;
-use work.demo_pkg.all;
 
 entity digger_top is
 	port(
 		sysclk    : in  std_logic;
-		btn       : in  std_logic_vector(1 downto 0);   -- onboard: btn(0) = reset, btn(1) = start/restart
+		btn       : in  std_logic_vector(1 downto 0);   -- onboard: btn(0) = restart (keeps high score), btn(1) = full reset
 		led       : out std_logic_vector(1 downto 0);
 		vga_r     : out std_logic_vector(1 downto 0);
 		vga_g     : out std_logic_vector(1 downto 0);
@@ -46,21 +53,17 @@ entity digger_top is
 end digger_top;
 
 architecture arch of digger_top is
-	constant USE_TEST_PATTERN : boolean := false;
-	constant USE_DEMO_STATE   : boolean := false;
-	constant DEMO : game_state_t := make_demo;
-
 	signal pix_clk, locked          : std_logic;
 	signal lock_m, lock_s           : std_logic := '0';
 	signal hs, vs, active, tick     : std_logic;
 	signal hs_o, vs_o               : std_logic;
 	signal px, py                   : unsigned(9 downto 0);
-	signal rgb, tp_rgb, rgb_sel     : std_logic_vector(5 downto 0);
+	signal rgb                      : std_logic_vector(5 downto 0);
 	signal d_up, d_down, d_left     : std_logic;
 	signal d_right, d_pump          : std_logic;
 	signal d_start, d_rst           : std_logic;
 	signal rst                      : std_logic;
-	signal gs, gs_sel               : game_state_t;
+	signal gs                       : game_state_t;
 begin
 	clkgen: entity work.clk_gen
 		port map(clk_in => sysclk, clk_out => pix_clk, locked => locked);
@@ -100,21 +103,14 @@ begin
 		         k_right => d_right, k_pump => d_pump, k_start => d_start,
 		         gs => gs);
 
-	gs_sel <= DEMO when USE_DEMO_STATE else gs;
-
 	draw: entity work.renderer
 		port map(clk => pix_clk, hs => hs, vs => vs, active => active,
-		         px => px, py => py, gs => gs_sel,
+		         px => px, py => py, gs => gs,
 		         rgb => rgb, hs_o => hs_o, vs_o => vs_o);
 
-	pattern: entity work.test_pattern
-		port map(clk => pix_clk, active => active, px => px, py => py, rgb => tp_rgb);
-
-	rgb_sel <= tp_rgb when USE_TEST_PATTERN else rgb;
-
-	vga_r  <= rgb_sel(5 downto 4);
-	vga_g  <= rgb_sel(3 downto 2);
-	vga_b  <= rgb_sel(1 downto 0);
+	vga_r  <= rgb(5 downto 4);
+	vga_g  <= rgb(3 downto 2);
+	vga_b  <= rgb(1 downto 0);
 	vga_hs <= hs_o;
 	vga_vs <= vs_o;
 
