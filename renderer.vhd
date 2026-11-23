@@ -110,7 +110,7 @@ begin
 					end if;
 
 					-- 2. rocks
-					for j in 0 to NUM_ROCKS - 1 loop
+					for j in 0 to MAX_ROCKS - 1 loop
 						if gs.rstate(j) < 3 then
 							wx := gs.rx(j);
 							if gs.rstate(j) = 1 then

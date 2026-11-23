@@ -259,7 +259,7 @@ begin
 			variable landed : boolean;
 			variable rr     : rect_t;
 		begin
-			for j in 0 to NUM_ROCKS - 1 loop
+			for j in 0 to MAX_ROCKS - 1 loop
 				c := v.rx(j) / TILE;
 				r := v.ry(j) / TILE;
 				case v.rstate(j) is
@@ -276,7 +276,7 @@ begin
 							v.rstate(j) := 2;
 							v.rk(j) := 0;
 							v.dirt(r * COLS + c) := '0';
-							if v.rdrops < NUM_ROCKS then
+							if v.rdrops < MAX_ROCKS then
 								v.rdrops := v.rdrops + 1;
 							end if;
 							if v.rdrops = 2 and v.vdone = '0' then

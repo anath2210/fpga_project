@@ -21,8 +21,8 @@ package digger_pkg is
 	constant ROW_DIRT1    : integer := 16;
 	constant ROW_HUD1     : integer := 17;
 
-	constant MAX_ENEMIES : integer := 4;
-	constant NUM_ROCKS   : integer := 3;
+	constant MAX_ENEMIES : integer := 6;
+	constant MAX_ROCKS   : integer := 5;
 	constant MAX_LIVES   : integer := 5;
 	constant START_LIVES : integer := 3;
 
@@ -63,11 +63,11 @@ package digger_pkg is
 	type eage_arr  is array (0 to MAX_ENEMIES - 1) of integer range 0 to 1023;
 	type ebr_arr   is array (0 to MAX_ENEMIES - 1) of integer range 0 to 63;
 	type ekind_arr is array (0 to MAX_ENEMIES - 1) of integer range 0 to 1;
-	type rx_arr    is array (0 to NUM_ROCKS - 1) of xpos_t;
-	type ry_arr    is array (0 to NUM_ROCKS - 1) of ypos_t;
-	type rst_arr   is array (0 to NUM_ROCKS - 1) of integer range 0 to 3;
-	type rtm_arr   is array (0 to NUM_ROCKS - 1) of integer range 0 to 63;
-	type rk_arr    is array (0 to NUM_ROCKS - 1) of integer range 0 to 7;
+	type rx_arr    is array (0 to MAX_ROCKS - 1) of xpos_t;
+	type ry_arr    is array (0 to MAX_ROCKS - 1) of ypos_t;
+	type rst_arr   is array (0 to MAX_ROCKS - 1) of integer range 0 to 3;
+	type rtm_arr   is array (0 to MAX_ROCKS - 1) of integer range 0 to 63;
+	type rk_arr    is array (0 to MAX_ROCKS - 1) of integer range 0 to 7;
 	type chunk_dirt_t is array (0 to NUM_CHUNKS - 1) of std_logic;
 
 	-- ===================== THE GAME STATE =====================
@@ -103,7 +103,7 @@ package digger_pkg is
 		rstate  : rst_arr;
 		rtimer  : rtm_arr;
 		rk      : rk_arr;
-		rdrops  : integer range 0 to NUM_ROCKS;
+		rdrops  : integer range 0 to MAX_ROCKS;
 		vstate  : integer range 0 to 1;
 		vtimer  : integer range 0 to 600;
 		vdone   : std_logic;
@@ -313,7 +313,7 @@ package body digger_pkg is
 		if c < 0 or c >= COLS or r < 0 or r >= ROWS then
 			return false;
 		end if;
-		for j in 0 to NUM_ROCKS - 1 loop
+		for j in 0 to MAX_ROCKS - 1 loop
 			if (st.rstate(j) = 0 or st.rstate(j) = 1) and
 			   st.rx(j) / TILE = c and st.ry(j) / TILE = r then
 				return true;
@@ -367,7 +367,7 @@ package body digger_pkg is
 			end if;
 		end if;
 
-		for j in 0 to NUM_ROCKS - 1 loop
+		for j in 0 to MAX_ROCKS - 1 loop
 			if (st.rstate(j) = 0 or st.rstate(j) = 1) and
 			   (st.rx(j) / TILE = c0 or st.rx(j) / TILE = c1) and
 			   (st.ry(j) / TILE = r0 or st.ry(j) / TILE = r1) then

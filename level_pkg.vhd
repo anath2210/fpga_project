@@ -16,6 +16,7 @@ package level_pkg is
 		px          : integer;
 		py          : integer;
 		num_enemies : integer range 0 to MAX_ENEMIES;
+		num_rocks   : integer range 0 to MAX_ROCKS;
 		ex          : ex_arr;
 		ey          : ey_arr;
 		ekind       : ekind_arr;
@@ -38,6 +39,7 @@ package body level_pkg is
 		s.ey := (others => 0);
 		s.ekind := (others => 0);
 
+		s.num_rocks := 0;
 		s.rx := (others => 0);
 		s.ry := (others => 0);
 
@@ -45,6 +47,7 @@ package body level_pkg is
 
 			when 1 =>
 				s.num_enemies := 4;
+				s.num_rocks := 3;
 
 				s.ex(0 to 3) := (16, 48, 144, 176);
 				s.ey(0 to 3) := (48, 176, 208, 48);
@@ -55,13 +58,14 @@ package body level_pkg is
 
 			when 2 =>
 				s.num_enemies := 5;
+				s.num_rocks := 4;
 
 				s.ex(0 to 4) := (16, 32, 112, 176, 176);
 				s.ey(0 to 4) := (176, 112, 160, 64, 192);
 				s.ekind(0 to 4) := (0, 0, 0, 1, 1);
 
-				s.rx := (32, 64, 128);
-				s.ry := (48, 192, 64);
+				s.rx := (32, 64, 128, 192);
+				s.ry := (48, 192, 64, 144);
 
 			when others =>
 				null;
@@ -209,8 +213,14 @@ package body level_pkg is
 		v.rx := s.rx;
 		v.ry := s.ry;
 
-		for j in 0 to NUM_ROCKS - 1 loop
-			v.rstate(j) := 0;
+		-- Activate only the rocks used by this level
+		for j in 0 to MAX_ROCKS - 1 loop
+			if j < s.num_rocks then
+				v.rstate(j) := 0;
+			else
+				v.rstate(j) := 3;
+			end if;
+
 			v.rtimer(j) := 0;
 			v.rk(j) := 0;
 		end loop;
