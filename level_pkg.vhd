@@ -53,8 +53,8 @@ package body level_pkg is
 				s.ey(0 to 3) := (48, 176, 208, 48);
 				s.ekind(0 to 3) := (0, 1, 0, 0);
 
-				s.rx := (48, 64, 160);
-				s.ry := (192, 64, 160);
+				s.rx(0 to 2) := (48, 64, 160);
+				s.ry(0 to 2) := (192, 64, 160);
 
 			when 2 =>
 				s.num_enemies := 5;
@@ -64,8 +64,8 @@ package body level_pkg is
 				s.ey(0 to 4) := (176, 112, 160, 64, 192);
 				s.ekind(0 to 4) := (0, 0, 0, 1, 1);
 
-				s.rx := (32, 64, 128, 192);
-				s.ry := (48, 192, 64, 144);
+				s.rx(0 to 3) := (32, 64, 128, 192);
+				s.ry(0 to 3) := (48, 192, 64, 144);
 
 			when others =>
 				null;
