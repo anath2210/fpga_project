@@ -51,7 +51,7 @@ begin
 		variable dig_h_v    : std_logic;
 		variable start_cx_v : integer range 0 to CHUNK_W - 1;
 		variable start_cy_v : integer range 0 to CHUNK_H - 1;
-		variable n_alive    : integer range 0 to NUM_ENEMIES;
+		variable n_alive    : integer range 0 to MAX_ENEMIES;
 		variable pb         : rect_t;
 
 		procedure do_player is
@@ -61,7 +61,7 @@ begin
 			variable can     : boolean;
 			variable hr      : rect_t;
 			variable lx, ly  : integer;
-			variable i       : integer range 0 to NUM_ENEMIES - 1;
+			variable i       : integer range 0 to MAX_ENEMIES - 1;
 			variable c, r    : integer range 0 to 17;
 		begin
 			aligned := (v.px mod TILE = 0) and (v.py mod TILE = 0);
@@ -82,7 +82,7 @@ begin
 				v.pump_hit := -1;
 				if v.hlen > 0 then
 					hr := hose_rect(v);
-					for e in 0 to NUM_ENEMIES - 1 loop
+					for e in 0 to MAX_ENEMIES - 1 loop
 						if v.ealive(e) = '1' and v.pump_hit < 0 and rects_overlap(hr, enemy_box(v, e)) then
 							v.pump_hit := e;
 						end if;
@@ -186,7 +186,7 @@ begin
 			variable nx, ny  : integer range 0 to 288;
 			variable spd     : integer range 0 to 15;
 		begin
-			for i in 0 to NUM_ENEMIES - 1 loop
+			for i in 0 to MAX_ENEMIES - 1 loop
 				if v.ealive(i) = '1' then
 					if v.einfl(i) > 0 then
 						if v.pump_hit /= i then
@@ -306,7 +306,7 @@ begin
 
 						rr.x0 := v.rx(j) + 1;  rr.x1 := v.rx(j) + 14;
 						rr.y0 := v.ry(j) + 1;  rr.y1 := v.ry(j) + 14;
-						for e in 0 to NUM_ENEMIES - 1 loop
+						for e in 0 to MAX_ENEMIES - 1 loop
 							if v.ealive(e) = '1' and rects_overlap(rr, enemy_box(v, e)) then
 								v.ealive(e) := '0';
 								v.einfl(e)  := 0;
@@ -382,7 +382,7 @@ begin
 			if rst = '1' then
 				s          <= make_init;
 				init_ram   <= '1';
-				init_map   <= make_level;
+				init_map   <= make_level(1);
 				dig_active <= '0';
 				dig_cnt    <= (others => '0');
 			elsif tick = '1' then
@@ -403,7 +403,7 @@ begin
 						do_rocks;
 						do_veg;
 
-						for e in 0 to NUM_ENEMIES - 1 loop
+						for e in 0 to MAX_ENEMIES - 1 loop
 							if v.ealive(e) = '1' then
 								if v.einfl(e) = 0 and rects_overlap(pb, enemy_box(v, e)) then
 									v.dead := '1';

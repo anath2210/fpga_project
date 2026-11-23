@@ -21,7 +21,7 @@ package digger_pkg is
 	constant ROW_DIRT1    : integer := 16;
 	constant ROW_HUD1     : integer := 17;
 
-	constant NUM_ENEMIES : integer := 4;
+	constant MAX_ENEMIES : integer := 4;
 	constant NUM_ROCKS   : integer := 3;
 	constant MAX_LIVES   : integer := 5;
 	constant START_LIVES : integer := 3;
@@ -54,15 +54,15 @@ package digger_pkg is
 	subtype ypos_t is integer range 0 to PF_H - 1;
 	subtype chunk_addr_t is unsigned(CHUNK_ADDR_W - 1 downto 0);
 
-	type ex_arr    is array (0 to NUM_ENEMIES - 1) of xpos_t;
-	type ey_arr    is array (0 to NUM_ENEMIES - 1) of ypos_t;
-	type edir_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 3;
-	type eacc_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 31;
-	type einfl_arr is array (0 to NUM_ENEMIES - 1) of integer range 0 to 3;
-	type etmr_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 127;
-	type eage_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 1023;
-	type ebr_arr   is array (0 to NUM_ENEMIES - 1) of integer range 0 to 63;
-	type ekind_arr is array (0 to NUM_ENEMIES - 1) of integer range 0 to 1;
+	type ex_arr    is array (0 to MAX_ENEMIES - 1) of xpos_t;
+	type ey_arr    is array (0 to MAX_ENEMIES - 1) of ypos_t;
+	type edir_arr  is array (0 to MAX_ENEMIES - 1) of integer range 0 to 3;
+	type eacc_arr  is array (0 to MAX_ENEMIES - 1) of integer range 0 to 31;
+	type einfl_arr is array (0 to MAX_ENEMIES - 1) of integer range 0 to 3;
+	type etmr_arr  is array (0 to MAX_ENEMIES - 1) of integer range 0 to 127;
+	type eage_arr  is array (0 to MAX_ENEMIES - 1) of integer range 0 to 1023;
+	type ebr_arr   is array (0 to MAX_ENEMIES - 1) of integer range 0 to 63;
+	type ekind_arr is array (0 to MAX_ENEMIES - 1) of integer range 0 to 1;
 	type rx_arr    is array (0 to NUM_ROCKS - 1) of xpos_t;
 	type ry_arr    is array (0 to NUM_ROCKS - 1) of ypos_t;
 	type rst_arr   is array (0 to NUM_ROCKS - 1) of integer range 0 to 3;
@@ -86,7 +86,7 @@ package digger_pkg is
 		pacc 	: integer range 0 to 31;
 		hlen    : integer range 0 to HOSE_MAX;
 		pcool   : integer range 0 to 31;
-		pump_hit: integer range -1 to NUM_ENEMIES - 1;
+		pump_hit: integer range -1 to MAX_ENEMIES - 1;
 		ex      : ex_arr;
 		ey      : ey_arr;
 		edir    : edir_arr;
@@ -96,7 +96,7 @@ package digger_pkg is
 		ecnt    : etmr_arr;
 		eage    : eage_arr;
 		ebreath : ebr_arr;
-		ealive  : std_logic_vector(0 to NUM_ENEMIES - 1);
+		ealive  : std_logic_vector(0 to MAX_ENEMIES - 1);
 		ekind   : ekind_arr;
 		rx      : rx_arr;
 		ry      : ry_arr;
@@ -111,15 +111,6 @@ package digger_pkg is
 		dead    : std_logic;
 		lfsr    : std_logic_vector(15 downto 0);
 	end record;
-
-	-- ===================== start positions =====================
-	constant PX0 : integer := 96;
-	constant PY0 : integer := 32;
-	constant EX0    : ex_arr    := (32, 176, 48, 160);
-	constant EY0    : ey_arr    := (80, 96, 176, 208);
-	constant EKIND0 : ekind_arr := (0, 1, 0, 1);
-	constant RX0    : rx_arr    := (112, 64, 160);
-	constant RY0    : ry_arr    := (64, 144, 160);
 
 	-- ===================== rectangles =====================
 	type rect_t is record
@@ -412,9 +403,9 @@ package body digger_pkg is
 	end function;
 
 	function alive_count(st : game_state_t) return integer is
-		variable n : integer range 0 to NUM_ENEMIES := 0;
+		variable n : integer range 0 to MAX_ENEMIES := 0;
 	begin
-		for i in 0 to NUM_ENEMIES - 1 loop
+		for i in 0 to MAX_ENEMIES - 1 loop
 			if st.ealive(i) = '1' then n := n + 1; end if;
 		end loop;
 		return n;
@@ -443,7 +434,7 @@ package body digger_pkg is
 
 	function enemy_at(st : game_state_t; x, y : integer) return integer is
 	begin
-		for i in 0 to NUM_ENEMIES - 1 loop
+		for i in 0 to MAX_ENEMIES - 1 loop
 			if st.ealive(i) = '1' and
 			   x >= st.ex(i) and x < st.ex(i) + TILE and
 			   y >= st.ey(i) and y < st.ey(i) + TILE and

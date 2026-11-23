@@ -134,7 +134,7 @@ begin
 					end if;
 
 					-- 4. enemies
-					for i in 0 to NUM_ENEMIES - 1 loop
+					for i in 0 to MAX_ENEMIES - 1 loop
 						if gs.ealive(i) = '1' then
 							if gs.einfl(i) > 0 then
 								dx := lx - (gs.ex(i) + 8);
