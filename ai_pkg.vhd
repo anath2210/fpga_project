@@ -49,7 +49,7 @@ package body ai_pkg is
 
 	--  distance between two cells' corners
 	function dist(ax, ay, bx, by : integer) return integer is
-		variable dx, dy : integer;
+		variable dx, dy : integer range 0 to 511;
 	begin
 		if ax >= bx then dx := ax - bx; else dx := bx - ax; end if;
 		if ay >= by then dy := ay - by; else dy := by - ay; end if;
@@ -58,16 +58,16 @@ package body ai_pkg is
 
 	function enemy_decide(st : game_state_t; i : integer; r : std_logic_vector(7 downto 0)) return edec_t is
 		variable d         : edec_t;
-		variable c, rw     : integer;   -- this enemy's cell
-		variable tx, ty    : integer;   -- target (pixels)
+		variable c, rw     : integer range 0 to 17;
+		variable tx, ty    : integer range 0 to 288;
 		variable ghost     : boolean;
-		variable best      : integer;
-		variable score     : integer;
+		variable best      : integer range 0 to 1023;
+		variable score     : integer range 0 to 1023;
 		variable nc, nr    : integer;
 		variable found     : boolean;
-		variable rev       : integer;
-		variable pd        : integer;
-		variable n         : integer;
+		variable rev       : integer range 0 to 3;
+		variable pd        : integer range 0 to 3;
+		variable n         : integer range 0 to 4;
 		variable gok       : boolean;
 		variable last_enem : boolean;
 	begin
@@ -87,12 +87,10 @@ package body ai_pkg is
 			tx := st.px;  ty := st.py;
 		end if;
 
-		-- fire-breather breathe when the player is lined up in front and close
+		-- fire-breather breathe when the player is lined up in front horizontally and close
 		if st.ekind(i) = 1 and not ghost and not last_enem and r(1 downto 0) = "00" then
 			if (st.edir(i) = 1 and st.py = st.ey(i) and st.px > st.ex(i) and st.px - st.ex(i) <= 3 * TILE) or
-			   (st.edir(i) = 3 and st.py = st.ey(i) and st.px < st.ex(i) and st.ex(i) - st.px <= 3 * TILE) or
-			   (st.edir(i) = 0 and st.px = st.ex(i) and st.py < st.ey(i) and st.ey(i) - st.py <= 3 * TILE) or
-			   (st.edir(i) = 2 and st.px = st.ex(i) and st.py > st.ey(i) and st.py - st.ey(i) <= 3 * TILE) then
+			   (st.edir(i) = 3 and st.py = st.ey(i) and st.px < st.ex(i) and st.ex(i) - st.px <= 3 * TILE) then
 				d.breathe := true;
 				d.go := false;
 				return d;
@@ -101,13 +99,13 @@ package body ai_pkg is
 
 		-- ghost mode head straight for the target through anything but rocks
 		if ghost then
-			best := 100000;  found := false;
+			best := 1023;  found := false;
 			for k in 0 to 3 loop
 				nc := c  + dir_dx(k);
 				nr := rw + dir_dy(k);
 				if enemy_cell_ok(st, nc, nr, true) then
 					score := dist(nc * TILE, nr * TILE, tx, ty);
-					if k = rev then score := score + 8; end if;       -- small bias against turning back
+					if k = rev and score < 1015 then score := score + 8; end if; -- small bias against turning back
 					if score < best then best := score; d.dir := k; found := true; end if;
 				end if;
 			end loop;
@@ -116,14 +114,14 @@ package body ai_pkg is
 		end if;
 
 		-- normal mode move through tunnels and prefer the way that gets closer
-		best := 100000;  found := false;  n := 0;
+		best := 1023;  found := false;  n := 0;
 		for k in 0 to 3 loop
 			nc := c  + dir_dx(k);
 			nr := rw + dir_dy(k);
 			if k /= rev and enemy_cell_ok(st, nc, nr, false) then
 				n := n + 1;
 				score := dist(nc * TILE, nr * TILE, tx, ty);
-				if k = st.edir(i) then score := score - 4; end if;    -- tiny bias to keep going straight
+				if k = st.edir(i) and score >= 4 then score := score - 4; end if; -- tiny bias to keep going straight
 				if score < best then best := score; d.dir := k; found := true; end if;
 			end if;
 		end loop;
@@ -147,7 +145,7 @@ package body ai_pkg is
 				d.dir := rev;
 			else
 				d.ghost := true;
-				best := 100000;  found := false;
+				best := 1023;  found := false;
 				for k in 0 to 3 loop
 					nc := c  + dir_dx(k);
 					nr := rw + dir_dy(k);

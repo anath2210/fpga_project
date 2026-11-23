@@ -61,8 +61,8 @@ begin
 			variable can     : boolean;
 			variable hr      : rect_t;
 			variable lx, ly  : integer;
-			variable i       : integer;
-			variable c, r    : integer;
+			variable i       : integer range 0 to NUM_ENEMIES - 1;
+			variable c, r    : integer range 0 to 17;
 		begin
 			aligned := (v.px mod TILE = 0) and (v.py mod TILE = 0);
 
@@ -183,8 +183,8 @@ begin
 			variable r8      : std_logic_vector(7 downto 0);
 			variable aligned : boolean;
 			variable moving  : boolean;
-			variable nx, ny  : integer;
-			variable spd     : integer;
+			variable nx, ny  : integer range 0 to 288;
+			variable spd     : integer range 0 to 15;
 		begin
 			for i in 0 to NUM_ENEMIES - 1 loop
 				if v.ealive(i) = '1' then
@@ -241,9 +241,11 @@ begin
 								v.eacc(i) := v.eacc(i) - 16;
 								nx := v.ex(i) + dir_dx(v.edir(i));
 								ny := v.ey(i) + dir_dy(v.edir(i));
-								if nx >= 0 and nx < PF_W - TILE + 1 and ny >= 0 and ny < PF_H - TILE + 1 then
-									v.ex(i) := nx;
-									v.ey(i) := ny;
+								if nx < PF_W - TILE + 1 and ny < PF_H - TILE + 1 then
+									if v.eghost(i) > 0 or ((nx mod 2 /= 0 and ny mod 2 /= 0) or enemy_span_ok(v, nx, ny, false)) then
+										v.ex(i) := nx;
+										v.ey(i) := ny;
+									end if;
 								end if;
 							end if;
 						end if;
@@ -253,7 +255,7 @@ begin
 		end procedure;
 
 		procedure do_rocks is
-			variable c, r   : integer;
+			variable c, r   : integer range 0 to 17;
 			variable landed : boolean;
 			variable rr     : rect_t;
 		begin
@@ -344,18 +346,21 @@ begin
 		end procedure;
 
 		procedure do_score is
+			variable sc_val, hi_val : integer range 0 to 999999;
 		begin
 			if v.gain > 0 then
 				v.score := add_pts(v.score, v.gain);
 				v.gain  := 0;
-				if score_val(v.score) > score_val(v.hiscore) then
+				sc_val := score_val(v.score);
+				hi_val := score_val(v.hiscore);
+				if sc_val > hi_val then
 					v.hiscore := v.score;
 				end if;
-				if v.bonus(0) = '0' and score_val(v.score) >= 20000 then
+				if v.bonus(0) = '0' and sc_val >= 20000 then
 					v.bonus(0) := '1';
 					if v.lives < MAX_LIVES then v.lives := v.lives + 1; end if;
 				end if;
-				if v.bonus(1) = '0' and score_val(v.score) >= 60000 then
+				if v.bonus(1) = '0' and sc_val >= 60000 then
 					v.bonus(1) := '1';
 					if v.lives < MAX_LIVES then v.lives := v.lives + 1; end if;
 				end if;

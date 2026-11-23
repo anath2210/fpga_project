@@ -59,14 +59,14 @@ package digger_pkg is
 	type edir_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 3;
 	type eacc_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 31;
 	type einfl_arr is array (0 to NUM_ENEMIES - 1) of integer range 0 to 3;
-	type etmr_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 255;
+	type etmr_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 127;
 	type eage_arr  is array (0 to NUM_ENEMIES - 1) of integer range 0 to 1023;
-	type ebr_arr   is array (0 to NUM_ENEMIES - 1) of integer range 0 to 127;
+	type ebr_arr   is array (0 to NUM_ENEMIES - 1) of integer range 0 to 63;
 	type ekind_arr is array (0 to NUM_ENEMIES - 1) of integer range 0 to 1;
 	type rx_arr    is array (0 to NUM_ROCKS - 1) of xpos_t;
 	type ry_arr    is array (0 to NUM_ROCKS - 1) of ypos_t;
 	type rst_arr   is array (0 to NUM_ROCKS - 1) of integer range 0 to 3;
-	type rtm_arr   is array (0 to NUM_ROCKS - 1) of integer range 0 to 255;
+	type rtm_arr   is array (0 to NUM_ROCKS - 1) of integer range 0 to 63;
 	type rk_arr    is array (0 to NUM_ROCKS - 1) of integer range 0 to 7;
 	type chunk_dirt_t is array (0 to NUM_CHUNKS - 1) of std_logic;
 
@@ -74,7 +74,7 @@ package digger_pkg is
 	type game_state_t is record
 		dirt    : std_logic_vector(0 to ROWS * COLS - 1);
 		gstate  : integer range 0 to 4;
-		gtimer  : integer range 0 to 255;
+		gtimer  : integer range 0 to 127;
 		rnd     : integer range 1 to 256;
 		lives   : integer range 0 to MAX_LIVES;
 		score   : digits_t;
@@ -83,7 +83,7 @@ package digger_pkg is
 		px      : xpos_t;
 		py      : ypos_t;
 		pdir    : integer range 0 to 3;
-		pacc    : integer range 0 to 31;
+		pacc 	: integer range 0 to 31;
 		hlen    : integer range 0 to HOSE_MAX;
 		pcool   : integer range 0 to 31;
 		pump_hit: integer range -1 to NUM_ENEMIES - 1;
@@ -105,9 +105,9 @@ package digger_pkg is
 		rk      : rk_arr;
 		rdrops  : integer range 0 to NUM_ROCKS;
 		vstate  : integer range 0 to 1;
-		vtimer  : integer range 0 to 1023;
+		vtimer  : integer range 0 to 600;
 		vdone   : std_logic;
-		gain    : integer range 0 to 65535;
+		gain    : integer range 0 to 16383;
 		dead    : std_logic;
 		lfsr    : std_logic_vector(15 downto 0);
 	end record;
@@ -123,7 +123,7 @@ package digger_pkg is
 
 	-- ===================== rectangles =====================
 	type rect_t is record
-		x0, y0, x1, y1 : integer range -128 to 511;
+		x0, y0, x1, y1 : integer range -64 to 320;
 	end record;
 	function in_rect(r : rect_t; x, y : integer) return boolean;
 	function rects_overlap(a, b : rect_t) return boolean;
@@ -147,6 +147,7 @@ package digger_pkg is
 	function cell_open(st : game_state_t; c, r : integer) return boolean;
 	function rock_in_cell(st : game_state_t; c, r : integer) return boolean;
 	function enemy_cell_ok(st : game_state_t; c, r : integer; ghost : boolean) return boolean;
+	function enemy_span_ok(st : game_state_t; x, y : integer; ghost : boolean) return boolean;
 	function player_cell_ok(st : game_state_t; c, r : integer) return boolean;
 	function hose_cell_ok(st : game_state_t; c, r : integer) return boolean;
 	function in_dirt(st : game_state_t; x, y : integer) return boolean;
@@ -233,25 +234,19 @@ package body digger_pkg is
 		       st.ebreath(i) > 0 and st.ebreath(i) <= FIRE_FRAMES;
 	end function;
 
+	-- Horizontal-only Fygar flame rectangle (left/right only)
 	function flame_rect(st : game_state_t; i : integer) return rect_t is
 		variable r : rect_t;
 	begin
 		r.x0 := 1; r.x1 := 0; r.y0 := 1; r.y1 := 0;
 		if fire_active(st, i) then
-			case st.edir(i) is
-				when 1 =>
-					r.x0 := st.ex(i) + TILE;        r.x1 := st.ex(i) + TILE + FIRE_LEN - 1;
-					r.y0 := st.ey(i) + 4;           r.y1 := st.ey(i) + 11;
-				when 3 =>
-					r.x1 := st.ex(i) - 1;           r.x0 := st.ex(i) - FIRE_LEN;
-					r.y0 := st.ey(i) + 4;           r.y1 := st.ey(i) + 11;
-				when 0 =>
-					r.y1 := st.ey(i) - 1;           r.y0 := st.ey(i) - FIRE_LEN;
-					r.x0 := st.ex(i) + 4;           r.x1 := st.ex(i) + 11;
-				when others =>
-					r.y0 := st.ey(i) + TILE;        r.y1 := st.ey(i) + TILE + FIRE_LEN - 1;
-					r.x0 := st.ex(i) + 4;           r.x1 := st.ex(i) + 11;
-			end case;
+			if st.edir(i) = 1 then
+				r.x0 := st.ex(i) + TILE;        r.x1 := st.ex(i) + TILE + FIRE_LEN - 1;
+				r.y0 := st.ey(i) + 4;           r.y1 := st.ey(i) + 11;
+			elsif st.edir(i) = 3 then
+				r.x1 := st.ex(i) - 1;           r.x0 := st.ex(i) - FIRE_LEN;
+				r.y0 := st.ey(i) + 4;           r.y1 := st.ey(i) + 11;
+			end if;
 		end if;
 		return r;
 	end function;
@@ -277,11 +272,9 @@ package body digger_pkg is
 	end function;
 
 	function chunk_addr_of(x, y : integer) return chunk_addr_t is
-		variable cx, cy, idx : integer range 0 to NUM_CHUNKS - 1;
+		variable idx : integer range 0 to NUM_CHUNKS - 1;
 	begin
-		cx := x / 2;
-		cy := y / 2;
-		idx := cy * CHUNK_W + cx;
+		idx := (y / 2) * CHUNK_W + (x / 2);
 		return to_unsigned(idx, CHUNK_ADDR_W);
 	end function;
 
@@ -326,6 +319,9 @@ package body digger_pkg is
 
 	function rock_in_cell(st : game_state_t; c, r : integer) return boolean is
 	begin
+		if c < 0 or c >= COLS or r < 0 or r >= ROWS then
+			return false;
+		end if;
 		for j in 0 to NUM_ROCKS - 1 loop
 			if (st.rstate(j) = 0 or st.rstate(j) = 1) and
 			   st.rx(j) / TILE = c and st.ry(j) / TILE = r then
@@ -352,6 +348,43 @@ package body digger_pkg is
 			return true;
 		end if;
 		return st.dirt(r * COLS + c) = '0';
+	end function;
+
+	-- Checks 16x16 enemy footprint against thin walls (<= 4 px / <= 2 chunks) and rocks
+	function enemy_span_ok(st : game_state_t; x, y : integer; ghost : boolean) return boolean is
+		variable c0, r0 : integer range 0 to 17;
+		variable c1, r1 : integer range 0 to 17;
+		variable r_min  : integer range 0 to 17;
+	begin
+		if x < 0 or y < 0 or x + TILE > PF_W or y + TILE > PF_H then
+			return false;
+		end if;
+		c0 := x / TILE;
+		r0 := y / TILE;
+		if (x + TILE - 1) >= (c0 + 1) * TILE then c1 := c0 + 1; else c1 := c0; end if;
+		if (y + TILE - 1) >= (r0 + 1) * TILE then r1 := r0 + 1; else r1 := r0; end if;
+
+		if ghost then r_min := ROW_SURF; else r_min := ROW_DIRT0; end if;
+		if r0 < r_min or r1 > ROW_DIRT1 then
+			return false;
+		end if;
+
+		if not ghost then
+			if st.dirt(r0 * COLS + c0) = '1' or st.dirt(r0 * COLS + c1) = '1' or
+			   st.dirt(r1 * COLS + c0) = '1' or st.dirt(r1 * COLS + c1) = '1' then
+				return false;
+			end if;
+		end if;
+
+		for j in 0 to NUM_ROCKS - 1 loop
+			if (st.rstate(j) = 0 or st.rstate(j) = 1) and
+			   (st.rx(j) / TILE = c0 or st.rx(j) / TILE = c1) and
+			   (st.ry(j) / TILE = r0 or st.ry(j) / TILE = r1) then
+				return false;
+			end if;
+		end loop;
+
+		return true;
 	end function;
 
 	function player_cell_ok(st : game_state_t; c, r : integer) return boolean is
@@ -428,14 +461,11 @@ package body digger_pkg is
 
 	function add_pts(d : digits_t; pts : integer) return digits_t is
 		variable r     : digits_t := d;
-		variable p     : integer range 0 to 131071 := pts;
+		variable p     : integer range 0 to 16383 := pts;
 		variable carry : integer range 0 to 2 := 0;
 		variable t     : integer range 0 to 21;
-		variable d0, d1, d2, d3, d4, d5 : integer range 0 to 9;
+		variable d0, d1, d2, d3, d4 : integer range 0 to 9;
 	begin
-		-- Extract decimal digits without synthesizing general division/modulo loops
-		d5 := p / 100000;
-		p  := p - d5 * 100000;
 		d4 := p / 10000;
 		p  := p - d4 * 10000;
 		d3 := p / 1000;
@@ -455,8 +485,9 @@ package body digger_pkg is
 		if t >= 10 then r(3) := t - 10; carry := 1; else r(3) := t; carry := 0; end if;
 		t := r(4) + d4 + carry;
 		if t >= 10 then r(4) := t - 10; carry := 1; else r(4) := t; carry := 0; end if;
-		t := r(5) + d5 + carry;
-		if t >= 10 then r(5) := t - 10; else r(5) := t; end if;
+		if carry = 1 then
+			if r(5) < 9 then r(5) := r(5) + 1; else r(5) := 0; end if;
+		end if;
 		return r;
 	end function;
 
