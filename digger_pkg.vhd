@@ -178,8 +178,7 @@ package body digger_pkg is
 
 	function rects_overlap(a, b : rect_t) return boolean is
 	begin
-		return a.x0 <= b.x1 and b.x0 <= a.x1 and a.y0 <= b.y1 and b.y0 <= a.y1 and
-		       a.x1 >= a.x0 and a.y1 >= a.y0 and b.x1 >= b.x0 and b.y1 >= b.y0;
+		return a.x0 <= b.x1 and b.x0 <= a.x1 and a.y0 <= b.y1 and b.y0 <= a.y1;
 	end function;
 
 	function player_box(st : game_state_t) return rect_t is
@@ -429,21 +428,35 @@ package body digger_pkg is
 
 	function add_pts(d : digits_t; pts : integer) return digits_t is
 		variable r     : digits_t := d;
-		variable p     : integer  := pts;
-		variable carry : integer  := 0;
-		variable t     : integer;
+		variable p     : integer range 0 to 131071 := pts;
+		variable carry : integer range 0 to 2 := 0;
+		variable t     : integer range 0 to 21;
+		variable d0, d1, d2, d3, d4, d5 : integer range 0 to 9;
 	begin
-		for i in 0 to 5 loop
-			t := r(i) + (p mod 10) + carry;
-			p := p / 10;
-			if t >= 10 then
-				r(i) := t - 10;
-				carry := 1;
-			else
-				r(i) := t;
-				carry := 0;
-			end if;
-		end loop;
+		-- Extract decimal digits without synthesizing general division/modulo loops
+		d5 := p / 100000;
+		p  := p - d5 * 100000;
+		d4 := p / 10000;
+		p  := p - d4 * 10000;
+		d3 := p / 1000;
+		p  := p - d3 * 1000;
+		d2 := p / 100;
+		p  := p - d2 * 100;
+		d1 := p / 10;
+		d0 := p - d1 * 10;
+
+		t := r(0) + d0 + carry;
+		if t >= 10 then r(0) := t - 10; carry := 1; else r(0) := t; carry := 0; end if;
+		t := r(1) + d1 + carry;
+		if t >= 10 then r(1) := t - 10; carry := 1; else r(1) := t; carry := 0; end if;
+		t := r(2) + d2 + carry;
+		if t >= 10 then r(2) := t - 10; carry := 1; else r(2) := t; carry := 0; end if;
+		t := r(3) + d3 + carry;
+		if t >= 10 then r(3) := t - 10; carry := 1; else r(3) := t; carry := 0; end if;
+		t := r(4) + d4 + carry;
+		if t >= 10 then r(4) := t - 10; carry := 1; else r(4) := t; carry := 0; end if;
+		t := r(5) + d5 + carry;
+		if t >= 10 then r(5) := t - 10; else r(5) := t; end if;
 		return r;
 	end function;
 

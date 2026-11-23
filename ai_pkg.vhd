@@ -49,23 +49,27 @@ package body ai_pkg is
 
 	--  distance between two cells' corners
 	function dist(ax, ay, bx, by : integer) return integer is
+		variable dx, dy : integer;
 	begin
-		return abs(ax - bx) + abs(ay - by);
+		if ax >= bx then dx := ax - bx; else dx := bx - ax; end if;
+		if ay >= by then dy := ay - by; else dy := by - ay; end if;
+		return dx + dy;
 	end function;
 
 	function enemy_decide(st : game_state_t; i : integer; r : std_logic_vector(7 downto 0)) return edec_t is
-		variable d      : edec_t;
-		variable c, rw  : integer;   -- this enemy's cell
-		variable tx, ty : integer;   -- target (pixels)
-		variable ghost  : boolean;
-		variable best   : integer;
-		variable score  : integer;
-		variable nc, nr : integer;
-		variable found  : boolean;
-		variable rev    : integer;
-		variable pd     : integer;
-		variable n      : integer;
-		variable gok    : boolean;
+		variable d         : edec_t;
+		variable c, rw     : integer;   -- this enemy's cell
+		variable tx, ty    : integer;   -- target (pixels)
+		variable ghost     : boolean;
+		variable best      : integer;
+		variable score     : integer;
+		variable nc, nr    : integer;
+		variable found     : boolean;
+		variable rev       : integer;
+		variable pd        : integer;
+		variable n         : integer;
+		variable gok       : boolean;
+		variable last_enem : boolean;
 	begin
 		d.go := true;  d.dir := st.edir(i);  d.ghost := false;  d.breathe := false;
 		c  := st.ex(i) / TILE;
@@ -73,9 +77,10 @@ package body ai_pkg is
 		rev := opposite(st.edir(i));
 		ghost := st.eghost(i) > 0;
 		gok := st.eage(i) >= ghost_delay(st.rnd);
+		last_enem := (alive_count(st) = 1);
 
 		-- target the player or the top-left corner when this is the last enemy
-		if alive_count(st) = 1 then
+		if last_enem then
 			tx := 0;  ty := ROW_SURF * TILE;
 			d.ghost := true;  ghost := true;
 		else
@@ -83,7 +88,7 @@ package body ai_pkg is
 		end if;
 
 		-- fire-breather breathe when the player is lined up in front and close
-		if st.ekind(i) = 1 and not ghost and alive_count(st) > 1 and r(1 downto 0) = "00" then
+		if st.ekind(i) = 1 and not ghost and not last_enem and r(1 downto 0) = "00" then
 			if (st.edir(i) = 1 and st.py = st.ey(i) and st.px > st.ex(i) and st.px - st.ex(i) <= 3 * TILE) or
 			   (st.edir(i) = 3 and st.py = st.ey(i) and st.px < st.ex(i) and st.ex(i) - st.px <= 3 * TILE) or
 			   (st.edir(i) = 0 and st.px = st.ex(i) and st.py < st.ey(i) and st.ey(i) - st.py <= 3 * TILE) or

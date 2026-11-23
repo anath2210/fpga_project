@@ -39,18 +39,18 @@ entity vga_timing is
 end vga_timing;
 
 architecture arch of vga_timing is
-	signal h : integer range 0 to 799 := 0;
-	signal v : integer range 0 to 524 := 0;
+	signal h : unsigned(9 downto 0) := (others => '0');
+	signal v : unsigned(9 downto 0) := (others => '0');
 begin
 	process(clk)
 	begin
 		if rising_edge(clk) then
-			if h = 799 then
-				h <= 0;
-				if v = 524 then
-					v <= 0;
+			if h = to_unsigned(799, 10) then
+				h <= (others => '0');
+				if v = to_unsigned(524, 10) then
+					v <= (others => '0');
 				else
-					v <= v+ 1;
+					v <= v + 1;
 				end if;
 			else
 				h <= h + 1;
@@ -58,10 +58,10 @@ begin
 		end if;
 	end process;
 
-	hs <= '0' when (h >= 656 and h < 752) else '1';
-	vs <= '0' when (v >= 490 and v <492) else '1';
-	active <= '1' when (h < 640 and v < 480) else '0';
-	tick <= '1' when (h = 0 and v = 480) else '0';
-	px <= to_unsigned(h, 10);
-	py <= to_unsigned(v, 10);
+	hs <= '0' when (h >= to_unsigned(656, 10) and h < to_unsigned(752, 10)) else '1';
+	vs <= '0' when (v >= to_unsigned(490, 10) and v < to_unsigned(492, 10)) else '1';
+	active <= '1' when (h < to_unsigned(640, 10) and v < to_unsigned(480, 10)) else '0';
+	tick <= '1' when (h = to_unsigned(0, 10) and v = to_unsigned(480, 10)) else '0';
+	px <= h;
+	py <= v;
 end arch;

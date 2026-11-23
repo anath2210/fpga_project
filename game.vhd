@@ -29,9 +29,11 @@ architecture arch of game is
 	signal s : game_state_t;
 	signal q_up, q_down, q_left, q_right, q_pump, q_start : std_logic := '0';
 
+	-- 8-chunk (16-px) full-width tunnel carving burst state
 	signal dig_active : std_logic := '0';
-	signal dig_cx, dig_cy : integer range -16 to CHUNK_W + 15 := 0;
-	signal dig_dx, dig_dy : integer range -2 to 2 := 0;
+	signal dig_horiz  : std_logic := '0'; -- '1' = left/right (step +CHUNK_W), '0' = up/down (step +1)
+	signal dig_cnt    : unsigned(2 downto 0) := (others => '0'); -- 0..7
+	signal dig_addr   : chunk_addr_t := (others => '0');
 begin
 	gs <= s;
 
@@ -44,13 +46,13 @@ begin
 	end process;
 
 	process(clk)
-		variable v         : game_state_t;
-		variable start_dig : boolean;
-		variable dcx, dcy  : integer range -16 to CHUNK_W + 15;
-		variable cx_i, cy_i : integer;
-		variable c_addr    : integer range 0 to NUM_CHUNKS - 1;
-		variable n_alive   : integer range 0 to NUM_ENEMIES;
-		variable pb        : rect_t;
+		variable v          : game_state_t;
+		variable start_dig  : boolean;
+		variable dig_h_v    : std_logic;
+		variable start_cx_v : integer range 0 to CHUNK_W - 1;
+		variable start_cy_v : integer range 0 to CHUNK_H - 1;
+		variable n_alive    : integer range 0 to NUM_ENEMIES;
+		variable pb         : rect_t;
 
 		procedure do_player is
 			variable want    : integer range -1 to 3;
@@ -147,8 +149,23 @@ begin
 							v.px := v.px + dir_dx(nd);
 							v.py := v.py + dir_dy(nd);
 							start_dig := true;
-							dcx := (v.px + 8 + 4 * dir_dx(nd)) / 2;
-							dcy := (v.py + 8 + 4 * dir_dy(nd)) / 2;
+							if dir_dx(nd) /= 0 then
+								dig_h_v := '1';
+								if dir_dx(nd) > 0 then
+									start_cx_v := (v.px + TILE - 1) / 2;
+								else
+									start_cx_v := v.px / 2;
+								end if;
+								start_cy_v := v.py / 2;
+							else
+								dig_h_v := '0';
+								start_cx_v := v.px / 2;
+								if dir_dy(nd) > 0 then
+									start_cy_v := (v.py + TILE - 1) / 2;
+								else
+									start_cy_v := v.py / 2;
+								end if;
+							end if;
 						end if;
 					end if;
 
@@ -353,12 +370,16 @@ begin
 			ram_we    <= '0';
 			init_ram  <= '0';
 			start_dig := false;
+			dig_h_v   := '0';
+			start_cx_v := 0;
+			start_cy_v := 0;
 
 			if rst = '1' then
 				s          <= make_init;
 				init_ram   <= '1';
 				init_map   <= make_level;
 				dig_active <= '0';
+				dig_cnt    <= (others => '0');
 			elsif tick = '1' then
 				v := s;
 
@@ -458,29 +479,25 @@ begin
 
 				if start_dig then
 					dig_active <= '1';
-					dig_cx <= dcx;
-					dig_cy <= dcy;
-					dig_dx <= -2;
-					dig_dy <= -2;
+					dig_horiz  <= dig_h_v;
+					dig_cnt    <= (others => '0');
+					dig_addr   <= to_unsigned(start_cy_v * CHUNK_W + start_cx_v, CHUNK_ADDR_W);
 				end if;
 			elsif dig_active = '1' then
-				cx_i := dig_cx + dig_dx;
-				cy_i := dig_cy + dig_dy;
-				if cx_i >= 0 and cx_i < CHUNK_W and
-				   cy_i >= ROW_DIRT0 * (TILE / 2) and cy_i < (ROW_DIRT1 + 1) * (TILE / 2) then
-					c_addr := cy_i * CHUNK_W + cx_i;
-					ram_we   <= '1';
-					ram_addr <= to_unsigned(c_addr, CHUNK_ADDR_W);
-					ram_din  <= '0';
-				end if;
+				ram_we   <= '1';
+				ram_addr <= dig_addr;
+				ram_din  <= '0';
 
-				if dig_dx < 2 then
-					dig_dx <= dig_dx + 1;
-				elsif dig_dy < 2 then
-					dig_dx <= -2;
-					dig_dy <= dig_dy + 1;
-				else
+				if dig_cnt = to_unsigned(7, 3) then
 					dig_active <= '0';
+					dig_cnt    <= (others => '0');
+				else
+					dig_cnt <= dig_cnt + 1;
+					if dig_horiz = '1' then
+						dig_addr <= resize(dig_addr + to_unsigned(CHUNK_W, CHUNK_ADDR_W), CHUNK_ADDR_W);
+					else
+						dig_addr <= resize(dig_addr + to_unsigned(1, CHUNK_ADDR_W), CHUNK_ADDR_W);
+					end if;
 				end if;
 			end if;
 		end if;
