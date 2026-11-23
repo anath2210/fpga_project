@@ -31,7 +31,7 @@ package body level_pkg is
 		variable s : level_start_t;
 	begin
 		s.px := tile_to_px(6);
-		s.py := tile_to_py(2);
+		s.py := tile_to_py(8);
 
 		s.num_enemies := 0;
 		s.ex := (others => 0);
@@ -46,32 +46,22 @@ package body level_pkg is
 			when 1 =>
 				s.num_enemies := 4;
 
-				s.ex(0 to 3) := (32, 176, 48, 160);
-				s.ey(0 to 3) := (80, 96, 176, 208);
-				s.ekind(0 to 3) := (0, 1, 0, 1);
+				s.ex(0 to 3) := (16, 48, 144, 176);
+				s.ey(0 to 3) := (48, 176, 208, 48);
+				s.ekind(0 to 3) := (0, 1, 0, 0);
 
-				s.rx := (112, 64, 160);
-				s.ry := (64, 144, 160);
+				s.rx := (48, 64, 160);
+				s.ry := (192, 64, 160);
 
 			when 2 =>
 				s.num_enemies := 5;
 
-				s.ex(0 to 4) := (32, 176, 48, 160, 96);
-				s.ey(0 to 4) := (80, 96, 176, 208, 144);
-				s.ekind(0 to 4) := (1, 0, 1, 0, 1);
+				s.ex(0 to 4) := (16, 32, 112, 176, 176);
+				s.ey(0 to 4) := (176, 112, 160, 64, 192);
+				s.ekind(0 to 4) := (0, 0, 0, 1, 1);
 
-				s.rx := (96, 64, 144);
-				s.ry := (128, 144, 176);
-
-			when 3 =>
-				s.num_enemies := 6;
-
-				s.ex := (48, 160, 32, 176, 96, 128);
-				s.ey := (96, 80, 176, 208, 144, 192);
-				s.ekind := (1, 1, 0, 1, 0, 1);
-
-				s.rx := (80, 112, 160);
-				s.ry := (64, 128, 160);
+				s.rx := (32, 64, 128);
+				s.ry := (48, 192, 64);
 
 			when others =>
 				null;
@@ -101,66 +91,52 @@ package body level_pkg is
 
 		-- Common player starting tunnel
 		for i in 0 to 8 loop 
-			carve(7, i);
+			carve(6, i);
 		end loop;
-		carve(6, 8);
-		carve(8, 8);
+		carve(5, 8);
+		carve(7, 8);
 
 		-- Different layout depending on level
 		case level is
 
 			when 1 =>
 				-- level 1
-				for c in 3 to 6 loop
+				for c in 2 to 5 loop
 					carve(c, 11);
 				end loop;
+				
+				for r in 3 to 7 loop
+					carve(1, r);
+				end loop;
 
-				for c in 10 to 13 loop
+				for c in 9 to 12 loop
 					carve(c, 3);
 				end loop;
 
-				for r in 3 to 7 loop
-					carve(2, r);
-				end loop;
-
 				for r in 10 to 14 loop
-					carve(10, r);
+					carve(9, r);
 				end loop;
 
 			when 2 =>
 				-- level 2
-				for c in 3 to 6 loop
-					carve(c, 11);
+				for r in 10 to 12 loop
+					carve(1, r);
 				end loop;
 
-				for c in 10 to 13 loop
-					carve(c, 3);
+				for c in 1 to 3 loop
+					carve(c, 7);
 				end loop;
 
-				for r in 3 to 7 loop
-					carve(2, r);
+				for c in 6 to 8 loop
+					carve(c, 10);
 				end loop;
 
-				for r in 10 to 14 loop
-					carve(10, r);
+				for c in 10 to 12 loop
+					carve(c, 4);
 				end loop;
 
-			when 3 =>
-				-- level 3
-				for c in 3 to 6 loop
-					carve(c, 11);
-				end loop;
-
-				for c in 10 to 13 loop
-					carve(c, 3);
-				end loop;
-
-				for r in 3 to 7 loop
-					carve(2, r);
-				end loop;
-
-				for r in 10 to 14 loop
-					carve(10, r);
+				for c in 10 to 12 loop
+					carve(c, 12);
 				end loop;
 
 			when others =>
@@ -175,7 +151,7 @@ package body level_pkg is
 		variable v : game_state_t := st;
 		variable s : level_start_t;
 	begin
-		s := level_start(((st.rnd - 1) mod 3) + 1);
+		s := level_start(((st.rnd - 1) mod 2) + 1);
 
 		-- Reset player position
 		v.px := s.px;
@@ -212,7 +188,7 @@ package body level_pkg is
 		variable s : level_start_t;
 		variable level : integer;
 	begin
-		level := ((st.rnd - 1) mod 3) + 1;
+		level := ((st.rnd - 1) mod 2) + 1;
 		s := level_start(level);
 
 		v := respawn(st);
