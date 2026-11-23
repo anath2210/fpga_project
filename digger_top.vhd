@@ -1,34 +1,3 @@
--- digger_top.vhd  --  OWNER: Person A (Hardware & Video), the INTEGRATION point
---
--- This file is already fully wired. It connects everybody's modules:
---
---   sysclk (12 MHz) -> clk_gen -> pix_clk (25 MHz)         [A]
---   vga_timing  -> px, py, hs, vs, active, tick            [A]
---   input_sync  -> debounced buttons                       [A]
---   game        -> state (game_state_t)                    [C]  (uses level_pkg [B], ai_pkg [A])
---   renderer    -> color for each pixel                    [B]  (uses sprite_pkg [B])
---
--- TWO TEST SWITCHES (change, rebuild, look at the monitor):
---   USE_TEST_PATTERN : true  -> show test_pattern.vhd's color bars instead of the game.
---                              Use this FIRST to check clock, timing and VGA wiring (A).
---   USE_DEMO_STATE   : true  -> the renderer draws demo_pkg's frozen fake state instead of
---                              the real game state. Use this to test artwork (B).
---   Both false = the real game.
---
--- TODO(A):
---   1. Once your own modules work, use USE_TEST_PATTERN to bring up the monitor.
---   2. Add a debugging aid: e.g. drive led(1) from a bit that toggles on every 'tick'
---      (then it blinks at 30 Hz) if you need to check the frame tick.
---   3. When B and C have files ready, pull everything together and make sure the whole
---      project builds. You are the person who runs the final integration.
--- digger_top.vhd
--- Top level for the Cmod A7-35T. Everything after the MMCM runs on the 25 MHz pixel clock.
---
---   sysclk (12 MHz) -> clk_gen -> pix_clk
---   vga_timing  -> counters, sync, 60 Hz frame tick
---   input_sync  -> debounced buttons
---   game        -> state, updated once per frame
---   renderer    -> color for each pixel
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
@@ -37,14 +6,14 @@ use work.digger_pkg.all;
 entity digger_top is
 	port(
 		sysclk    : in  std_logic;
-		btn       : in  std_logic_vector(1 downto 0);   -- onboard: btn(0) = restart (keeps high score), btn(1) = full reset
+		btn       : in  std_logic_vector(1 downto 0);
 		led       : out std_logic_vector(1 downto 0);
 		vga_r     : out std_logic_vector(1 downto 0);
 		vga_g     : out std_logic_vector(1 downto 0);
 		vga_b     : out std_logic_vector(1 downto 0);
 		vga_hs    : out std_logic;
 		vga_vs    : out std_logic;
-		key_up    : in  std_logic;                      -- external buttons to GND (active low)
+		key_up    : in  std_logic;
 		key_down  : in  std_logic;
 		key_left  : in  std_logic;
 		key_right : in  std_logic;
@@ -64,11 +33,18 @@ architecture arch of digger_top is
 	signal d_start, d_rst           : std_logic;
 	signal rst                      : std_logic;
 	signal gs                       : game_state_t;
+	signal ram_we_s                 : std_logic;
+	signal ram_addr_a_s             : chunk_addr_t;
+	signal ram_addr_b_s             : chunk_addr_t;
+	signal ram_din_s                : std_logic;
+	signal ram_dout_b_s             : std_logic;
+	signal init_ram_s               : std_logic;
+	signal init_map_s               : std_logic_vector(0 to ROWS * COLS - 1);
+	signal ram_busy_s               : std_logic;
 begin
 	clkgen: entity work.clk_gen
 		port map(clk_in => sysclk, clk_out => pix_clk, locked => locked);
 
-	-- bring the MMCM lock signal into the pixel clock domain; hold reset until locked
 	process(pix_clk)
 	begin
 		if rising_edge(pix_clk) then
@@ -101,12 +77,18 @@ begin
 		port map(clk => pix_clk, rst => rst, tick => tick,
 		         k_up => d_up, k_down => d_down, k_left => d_left,
 		         k_right => d_right, k_pump => d_pump, k_start => d_start,
-		         gs => gs);
+		         gs => gs, ram_we => ram_we_s, ram_addr => ram_addr_a_s,
+		         ram_din => ram_din_s, init_ram => init_ram_s, init_map => init_map_s);
+
+	dirt_bram: entity work.px_dirt_bram
+		port map(clk => pix_clk, init_trig => init_ram_s, init_dirt => init_map_s,
+		         we_a => ram_we_s, addr_a => ram_addr_a_s, din_a => ram_din_s,
+		         addr_b => ram_addr_b_s, dout_b => ram_dout_b_s, busy => ram_busy_s);
 
 	draw: entity work.renderer
 		port map(clk => pix_clk, hs => hs, vs => vs, active => active,
-		         px => px, py => py, gs => gs,
-		         rgb => rgb, hs_o => hs_o, vs_o => vs_o);
+		         px => px, py => py, gs => gs, dirt_px => ram_dout_b_s,
+		         ram_addr => ram_addr_b_s, rgb => rgb, hs_o => hs_o, vs_o => vs_o);
 
 	vga_r  <= rgb(5 downto 4);
 	vga_g  <= rgb(3 downto 2);
@@ -114,6 +96,6 @@ begin
 	vga_hs <= hs_o;
 	vga_vs <= vs_o;
 
-	led(0) <= lock_s;                                   -- on = clock locked
-	led(1) <= '1' when gs.gstate = 0 else '0';          -- on while playing
+	led(0) <= lock_s;
+	led(1) <= '1' when gs.gstate = 0 else '0';
 end arch;

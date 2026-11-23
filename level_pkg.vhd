@@ -20,7 +20,9 @@ package body level_pkg is
 		variable d : std_logic_vector(0 to ROWS * COLS - 1) := (others => '0');
 		procedure carve(c, r : integer) is
 		begin
-			d(r * COLS + c) := '0';
+			if c >= 0 and c < COLS and r >= 0 and r < ROWS then
+				d(r * COLS + c) := '0';
+			end if;
 		end procedure;
 	begin
 		-- every cell in the dirt rows starts as dirt
@@ -44,10 +46,13 @@ package body level_pkg is
 	function respawn(st : game_state_t) return game_state_t is
 		variable v : game_state_t := st;
 	begin
-		v.px := PX0;  v.py := PY0;  v.pdir := 2;  v.pacc := 0;
+		v.px := tile_to_px(6);  v.py := tile_to_py(2);  v.pdir := 2;  v.pacc := 0;
 		v.hlen := 0;  v.pcool := PUMP_FRAMES;  v.pump_hit := -1;
+		v.ex(0) := tile_to_px(2);   v.ey(0) := tile_to_py(5);
+		v.ex(1) := tile_to_px(11);  v.ey(1) := tile_to_py(6);
+		v.ex(2) := tile_to_px(3);   v.ey(2) := tile_to_py(11);
+		v.ex(3) := tile_to_px(10);  v.ey(3) := tile_to_py(13);
 		for i in 0 to NUM_ENEMIES - 1 loop
-			v.ex(i) := EX0(i);  v.ey(i) := EY0(i);
 			v.edir(i) := 1;  v.eacc(i) := 0;  v.einfl(i) := 0;
 			v.eghost(i) := 0;  v.ecnt(i) := 0;  v.ebreath(i) := 0;  v.eage(i) := 0;
 		end loop;
@@ -64,8 +69,10 @@ package body level_pkg is
 			v.ealive(i) := '1';
 			v.ekind(i)  := EKIND0(i);
 		end loop;
+		v.rx(0) := tile_to_px(7);   v.ry(0) := tile_to_py(4);
+		v.rx(1) := tile_to_px(4);   v.ry(1) := tile_to_py(9);
+		v.rx(2) := tile_to_px(10);  v.ry(2) := tile_to_py(10);
 		for j in 0 to NUM_ROCKS - 1 loop
-			v.rx(j) := RX0(j);  v.ry(j) := RY0(j);
 			v.rstate(j) := 0;   v.rtimer(j) := 0;  v.rk(j) := 0;
 		end loop;
 		v.rdrops := 0;

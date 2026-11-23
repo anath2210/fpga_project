@@ -1,26 +1,3 @@
--- digger_pkg.vhd  --  SHARED CONTRACT (the whole team)
---
--- This file is the interface between everyone's code:
---   * game.vhd (C) and world_pkg.vhd (A) WRITE the game_state_t record every frame.
---   * renderer.vhd (B) READS it to decide pixel colors.
---   * ai_pkg.vhd (A) READS it to decide where an enemy goes next.
--- RULE: do NOT change the record, types, constants or helper functions below without telling
--- the whole team. One changed line here can break everybody else's files.
---
--- PLAYFIELD (one cell = 16 x 16 pixels, drawn 1:1, centered on the 640x480 screen)
---      row  0      score and high score
---      row  1      surface (sky / open air, the player can walk on it)
---      rows 2-5    dirt layer 1   (200 pts per pump kill)
---      rows 6-9    dirt layer 2   (300)
---      rows 10-13  dirt layer 3   (400)
---      rows 14-16  dirt layer 4   (500)   -- the deepest layer is only 3 rows deep
---      row 17      lives left and round number
---  14 columns x 18 rows = 224 x 288 pixels.
---
--- POSITIONS: the player, enemies and rocks have PIXEL positions (top-left corner of their
--- 16x16 box, measured inside the playfield). Dirt is stored per 16x16 cell.
--- GRID-LOCKED TURNING: something may only turn (change axis) when BOTH x and y are multiples
--- of 16, i.e. exactly on a cell. Reversing direction is allowed any time.
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
@@ -28,51 +5,54 @@ use IEEE.numeric_std.all;
 package digger_pkg is
 
 	-- ===================== geometry =====================
-	constant TILE      : integer := 16;
-	constant COLS      : integer := 14;
-	constant ROWS      : integer := 18;
-	constant PF_W      : integer := COLS * TILE;   -- 224
-	constant PF_H      : integer := ROWS * TILE;   -- 288
-	constant PF_X0     : integer := 208;           -- left edge of the playfield on the screen
-	constant PF_Y0     : integer := 96;            -- top edge of the playfield on the screen
-	constant ROW_SURF  : integer := 1;             -- surface row
-	constant ROW_DIRT0 : integer := 2;             -- first dirt row
-	constant ROW_DIRT1 : integer := 16;            -- last dirt row
-	constant ROW_HUD1  : integer := 17;            -- bottom HUD row
+	constant TILE         : integer := 16;
+	constant COLS         : integer := 14;
+	constant ROWS         : integer := 18;
+	constant PF_W         : integer := COLS * TILE;              -- 224
+	constant PF_H         : integer := ROWS * TILE;              -- 288
+	constant CHUNK_W      : integer := PF_W / 2;                 -- 112 (2x2 px per chunk)
+	constant CHUNK_H      : integer := PF_H / 2;                 -- 144
+	constant NUM_CHUNKS   : integer := CHUNK_W * CHUNK_H;        -- 16128 (fits in one RAMB18E1)
+	constant CHUNK_ADDR_W : integer := 14;
+	constant PF_X0        : integer := 208;
+	constant PF_Y0        : integer := 96;
+	constant ROW_SURF     : integer := 1;
+	constant ROW_DIRT0    : integer := 2;
+	constant ROW_DIRT1    : integer := 16;
+	constant ROW_HUD1     : integer := 17;
 
 	constant NUM_ENEMIES : integer := 4;
 	constant NUM_ROCKS   : integer := 3;
 	constant MAX_LIVES   : integer := 5;
 	constant START_LIVES : integer := 3;
 
-	-- ===================== tuning (all in one place) =====================
-	-- Time is measured in frames (1 frame = 1/60 s). Speeds are in 1/16 pixel per frame
-	-- (16 = one pixel every frame = 60 pixels per second).
-	constant PSPD           : integer := 12;   -- player speed
-	constant HOSE_MAX       : integer := 40;   -- pump hose length in pixels
-	constant HOSE_STEP      : integer := 4;    -- hose grows this many pixels per frame
-	constant PUMP_FRAMES    : integer := 14;   -- frames between inflation steps while pumping
-	constant DEFLATE_FRAMES : integer := 40;   -- frames for an inflated enemy to shrink one stage
-	constant WOBBLE_FRAMES  : integer := 40;   -- rock wobble before it falls
-	constant FALL_STEP      : integer := 2;    -- rock falls this many pixels per frame
-	constant READY_FRAMES   : integer := 90;   -- frozen "get ready" time at the start of a round
-	constant DEAD_FRAMES    : integer := 90;   -- pause after the player dies
-	constant CLEAR_FRAMES   : integer := 120;  -- pause after a round is cleared
-	constant BREATH_FRAMES  : integer := 60;   -- fire-breather: total breath time (wind-up + fire)
-	constant FIRE_FRAMES    : integer := 30;   -- ... of which the last 30 frames are real flame
-	constant FIRE_LEN       : integer := 40;   -- flame length in pixels
-	constant GHOST_FRAMES   : integer := 100;  -- how long an enemy tunnels through dirt (minimum)
-	constant GHOST_WAIT     : integer := 600;  -- frames a normal enemy must walk before it may ghost (round 1; see ghost_delay()); shorter later
-	constant VEG_FRAMES     : integer := 600;  -- the vegetable stays 10 seconds
-	constant VEG_COL        : integer := 6;    -- where the vegetable appears (cell)
+	-- ===================== tuning =====================
+	constant PSPD           : integer := 12;
+	constant HOSE_MAX       : integer := 40;
+	constant HOSE_STEP      : integer := 4;
+	constant PUMP_FRAMES    : integer := 30;
+	constant DEFLATE_FRAMES : integer := 40;
+	constant WOBBLE_FRAMES  : integer := 40;
+	constant FALL_STEP      : integer := 2;
+	constant READY_FRAMES   : integer := 90;
+	constant DEAD_FRAMES    : integer := 90;
+	constant CLEAR_FRAMES   : integer := 120;
+	constant BREATH_FRAMES  : integer := 60;
+	constant FIRE_FRAMES    : integer := 30;
+	constant FIRE_LEN       : integer := 40;
+	constant GHOST_FRAMES   : integer := 100;
+	constant GHOST_WAIT     : integer := 600;
+	constant VEG_FRAMES     : integer := 600;
+	constant VEG_COL        : integer := 6;
 	constant VEG_ROW        : integer := 9;
-	constant HIT            : integer := 12;   -- two 16x16 boxes "touch" if closer than this (px)
+	constant HIT            : integer := 12;
 
 	-- ===================== types =====================
 	subtype digit_t is integer range 0 to 9;
-	type digits_t is array (0 to 5) of digit_t;      -- index 0 = least significant digit
+	type digits_t is array (0 to 5) of digit_t;
 	subtype xpos_t is integer range 0 to PF_W - 1;
 	subtype ypos_t is integer range 0 to PF_H - 1;
+	subtype chunk_addr_t is unsigned(CHUNK_ADDR_W - 1 downto 0);
 
 	type ex_arr    is array (0 to NUM_ENEMIES - 1) of xpos_t;
 	type ey_arr    is array (0 to NUM_ENEMIES - 1) of ypos_t;
@@ -88,60 +68,52 @@ package digger_pkg is
 	type rst_arr   is array (0 to NUM_ROCKS - 1) of integer range 0 to 3;
 	type rtm_arr   is array (0 to NUM_ROCKS - 1) of integer range 0 to 255;
 	type rk_arr    is array (0 to NUM_ROCKS - 1) of integer range 0 to 7;
+	type chunk_dirt_t is array (0 to NUM_CHUNKS - 1) of std_logic;
 
 	-- ===================== THE GAME STATE =====================
 	type game_state_t is record
-		-- map
 		dirt    : std_logic_vector(0 to ROWS * COLS - 1);
-		          -- '1' = dirt, '0' = open. Index = row*COLS + col. Rows 0, 1 and 17 are always '0'.
-		-- game flow
 		gstate  : integer range 0 to 4;
-		          -- 0 = playing, 1 = player just died, 2 = game over, 3 = round cleared, 4 = get ready
-		gtimer  : integer range 0 to 255;      -- countdown used by states 1, 3 and 4
-		rnd     : integer range 1 to 256;      -- round number
+		gtimer  : integer range 0 to 255;
+		rnd     : integer range 1 to 256;
 		lives   : integer range 0 to MAX_LIVES;
-		score   : digits_t;                    -- 6 digits, wraps 999,990 -> 0
+		score   : digits_t;
 		hiscore : digits_t;
-		bonus   : std_logic_vector(0 to 1);    -- extra-life awards already given (20,000 and 60,000)
-		-- player
-		px      : xpos_t;                      -- pixel position of the top-left corner
+		bonus   : std_logic_vector(0 to 1);
+		px      : xpos_t;
 		py      : ypos_t;
-		pdir    : integer range 0 to 3;        -- facing: 0 up, 1 right, 2 down, 3 left
-		pacc    : integer range 0 to 31;       -- speed accumulator
-		hlen    : integer range 0 to HOSE_MAX; -- pump hose length in pixels (0 = not pumping)
-		pcool   : integer range 0 to 31;       -- frames since the last inflation step
-		pump_hit: integer range -1 to NUM_ENEMIES - 1;   -- enemy the hose is touching (-1 = none)
-		-- enemies (kind 0 = walker, kind 1 = fire-breather)
+		pdir    : integer range 0 to 3;
+		pacc    : integer range 0 to 31;
+		hlen    : integer range 0 to HOSE_MAX;
+		pcool   : integer range 0 to 31;
+		pump_hit: integer range -1 to NUM_ENEMIES - 1;
 		ex      : ex_arr;
 		ey      : ey_arr;
-		edir    : edir_arr;                    -- direction it faces / is moving
-		eacc    : eacc_arr;                    -- speed accumulator
-		einfl   : einfl_arr;                   -- inflation stage 0..3 (a 4th pump pops it)
-		eghost  : etmr_arr;                    -- frames of ghost mode left (0 = not a ghost)
-		ecnt    : etmr_arr;                    -- deflate timer
-		eage    : eage_arr;                    -- frames walked as a normal enemy (ghosting is only allowed after GHOST_WAIT)
-		ebreath : ebr_arr;                     -- fire-breather timer: >FIRE_FRAMES wind-up, 1..FIRE_FRAMES flame
+		edir    : edir_arr;
+		eacc    : eacc_arr;
+		einfl   : einfl_arr;
+		eghost  : etmr_arr;
+		ecnt    : etmr_arr;
+		eage    : eage_arr;
+		ebreath : ebr_arr;
 		ealive  : std_logic_vector(0 to NUM_ENEMIES - 1);
 		ekind   : ekind_arr;
-		-- rocks
 		rx      : rx_arr;
 		ry      : ry_arr;
-		rstate  : rst_arr;                     -- 0 = still, 1 = wobbling, 2 = falling, 3 = broken (gone)
+		rstate  : rst_arr;
 		rtimer  : rtm_arr;
-		rk      : rk_arr;                      -- enemies crushed by this rock during its fall
-		rdrops  : integer range 0 to NUM_ROCKS;   -- rocks dropped this round
-		-- vegetable
-		vstate  : integer range 0 to 1;        -- 1 = on screen
+		rk      : rk_arr;
+		rdrops  : integer range 0 to NUM_ROCKS;
+		vstate  : integer range 0 to 1;
 		vtimer  : integer range 0 to 1023;
-		vdone   : std_logic;                   -- already shown this round
-		-- bookkeeping used while one frame of game logic is computed (game.vhd)
-		gain    : integer range 0 to 65535;    -- points earned this frame
-		dead    : std_logic;                   -- the player died this frame
-		lfsr    : std_logic_vector(15 downto 0);   -- random bits (must never be all zeros)
+		vdone   : std_logic;
+		gain    : integer range 0 to 65535;
+		dead    : std_logic;
+		lfsr    : std_logic_vector(15 downto 0);
 	end record;
 
 	-- ===================== start positions =====================
-	constant PX0 : integer := 96;              -- player start: cell (6, 2)
+	constant PX0 : integer := 96;
 	constant PY0 : integer := 32;
 	constant EX0    : ex_arr    := (32, 176, 48, 160);
 	constant EY0    : ey_arr    := (80, 96, 176, 208);
@@ -151,58 +123,54 @@ package digger_pkg is
 
 	-- ===================== rectangles =====================
 	type rect_t is record
-		x0, y0, x1, y1 : integer;              -- inclusive corners; empty if x1 < x0 or y1 < y0
+		x0, y0, x1, y1 : integer range -128 to 511;
 	end record;
 	function in_rect(r : rect_t; x, y : integer) return boolean;
 	function rects_overlap(a, b : rect_t) return boolean;
-	function player_box(st : game_state_t) return rect_t;      -- the player's hit box
-	function hose_rect(st : game_state_t) return rect_t;       -- the pump hose (empty if hlen = 0)
+	function player_box(st : game_state_t) return rect_t;
+	function hose_rect(st : game_state_t) return rect_t;
 	function fire_active(st : game_state_t; i : integer) return boolean;
 	function flame_rect(st : game_state_t; i : integer) return rect_t;
-	function hose_tip_x(st : game_state_t) return integer;     -- pixel just beyond the hose end
+	function hose_tip_x(st : game_state_t) return integer;
 	function hose_tip_y(st : game_state_t) return integer;
 
-	-- ===================== map helpers =====================
+	-- ===================== map & chunk helpers =====================
+	function tile_to_px(c : integer) return integer;
+	function tile_to_py(r : integer) return integer;
+	function tile_center_x(c : integer) return integer;
+	function tile_center_y(r : integer) return integer;
+	function chunk_addr_of(x, y : integer) return chunk_addr_t;
+	function px_is_chunk_dirt(cd : chunk_dirt_t; x, y : integer) return boolean;
 	function dir_dx(d : integer) return integer;
 	function dir_dy(d : integer) return integer;
 	function opposite(d : integer) return integer;
-	-- dirt = '0' and inside rows 1..16
 	function cell_open(st : game_state_t; c, r : integer) return boolean;
-	-- a rock that is not falling (still or wobbling) sits in this cell
 	function rock_in_cell(st : game_state_t; c, r : integer) return boolean;
-	-- may an enemy stand in this cell?  ghost = true ignores dirt and may use the surface row
 	function enemy_cell_ok(st : game_state_t; c, r : integer; ghost : boolean) return boolean;
-	-- may the player enter this cell? (dirt is fine, he digs it) -- not rocks, not outside rows 1..16
 	function player_cell_ok(st : game_state_t; c, r : integer) return boolean;
-	-- may the pump hose pass through this cell? (open tunnel, no rock)
 	function hose_cell_ok(st : game_state_t; c, r : integer) return boolean;
-	-- is the centre of the box at pixel (x, y) inside a dirt cell?
 	function in_dirt(st : game_state_t; x, y : integer) return boolean;
 	function alive_count(st : game_state_t) return integer;
-	-- cell number of a pixel coordinate (floor division, so -1 .. -16 is cell -1)
 	function cell_of(x : integer) return integer;
-	function enemy_box(st : game_state_t; i : integer) return rect_t;   -- enemy hit box
-	-- boxes at (ax, ay) and (bx, by) touch (closer than HIT pixels on both axes)
+	function enemy_box(st : game_state_t; i : integer) return rect_t;
 	function overlap(ax, ay, bx, by : integer) return boolean;
-	-- index of a live enemy standing in open tunnel whose box contains pixel (x, y), or -1
 	function enemy_at(st : game_state_t; x, y : integer) return integer;
 
 	-- ===================== scoring helpers =====================
-	function score_val(d : digits_t) return integer;                   -- digits -> number
-	function add_pts(d : digits_t; pts : integer) return digits_t;     -- decimal add, wraps after 999,990
-	function layer_of_row(r : integer) return integer;                 -- dirt layer 1..4 of a row
+	function score_val(d : digits_t) return integer;
+	function add_pts(d : digits_t; pts : integer) return digits_t;
+	function layer_of_row(r : integer) return integer;
 	function pump_pts(kind : integer; row : integer; side : boolean) return integer;
-	function rock_pts(n : integer) return integer;                     -- n enemies crushed by one rock
+	function rock_pts(n : integer) return integer;
 	function veg_pts(rnd : integer) return integer;
-	function veg_tier(rnd : integer) return integer;                   -- 0..10, picks the vegetable look
-	function ghost_delay(rnd : integer) return integer;                -- walking time before an enemy may ghost
-	function enemy_spd(rnd : integer; ghost : boolean) return integer; -- speed in 1/16 px per frame
+	function veg_tier(rnd : integer) return integer;
+	function ghost_delay(rnd : integer) return integer;
+	function enemy_spd(rnd : integer; ghost : boolean) return integer;
 
 end package;
 
 package body digger_pkg is
 
-	-- ---------------------------------------------------------------- rectangles
 	function in_rect(r : rect_t; x, y : integer) return boolean is
 	begin
 		return x >= r.x0 and x <= r.x1 and y >= r.y0 and y <= r.y1;
@@ -269,7 +237,7 @@ package body digger_pkg is
 	function flame_rect(st : game_state_t; i : integer) return rect_t is
 		variable r : rect_t;
 	begin
-		r.x0 := 1; r.x1 := 0; r.y0 := 1; r.y1 := 0;          -- empty
+		r.x0 := 1; r.x1 := 0; r.y0 := 1; r.y1 := 0;
 		if fire_active(st, i) then
 			case st.edir(i) is
 				when 1 =>
@@ -289,7 +257,45 @@ package body digger_pkg is
 		return r;
 	end function;
 
-	-- ---------------------------------------------------------------- map helpers
+	function tile_to_px(c : integer) return integer is
+	begin
+		return c * TILE;
+	end function;
+
+	function tile_to_py(r : integer) return integer is
+	begin
+		return r * TILE;
+	end function;
+
+	function tile_center_x(c : integer) return integer is
+	begin
+		return c * TILE + TILE / 2;
+	end function;
+
+	function tile_center_y(r : integer) return integer is
+	begin
+		return r * TILE + TILE / 2;
+	end function;
+
+	function chunk_addr_of(x, y : integer) return chunk_addr_t is
+		variable cx, cy, idx : integer range 0 to NUM_CHUNKS - 1;
+	begin
+		cx := x / 2;
+		cy := y / 2;
+		idx := cy * CHUNK_W + cx;
+		return to_unsigned(idx, CHUNK_ADDR_W);
+	end function;
+
+	function px_is_chunk_dirt(cd : chunk_dirt_t; x, y : integer) return boolean is
+		variable idx : integer range 0 to NUM_CHUNKS - 1;
+	begin
+		if x < 0 or x >= PF_W or y < 0 or y >= PF_H then
+			return false;
+		end if;
+		idx := (y / 2) * CHUNK_W + (x / 2);
+		return cd(idx) = '1';
+	end function;
+
 	function dir_dx(d : integer) return integer is
 	begin
 		if d = 1 then return 1;
@@ -374,7 +380,7 @@ package body digger_pkg is
 	end function;
 
 	function alive_count(st : game_state_t) return integer is
-		variable n : integer := 0;
+		variable n : integer range 0 to NUM_ENEMIES := 0;
 	begin
 		for i in 0 to NUM_ENEMIES - 1 loop
 			if st.ealive(i) = '1' then n := n + 1; end if;
@@ -416,7 +422,6 @@ package body digger_pkg is
 		return -1;
 	end function;
 
-	-- ---------------------------------------------------------------- scoring helpers
 	function score_val(d : digits_t) return integer is
 	begin
 		return d(0) + 10 * d(1) + 100 * d(2) + 1000 * d(3) + 10000 * d(4) + 100000 * d(5);
@@ -439,7 +444,7 @@ package body digger_pkg is
 				carry := 0;
 			end if;
 		end loop;
-		return r;                       -- a carry out of the top digit is dropped: 999,990 + 10 = 0
+		return r;
 	end function;
 
 	function layer_of_row(r : integer) return integer is
@@ -453,7 +458,6 @@ package body digger_pkg is
 		return l;
 	end function;
 
-	-- walker: 200/300/400/500 by layer. Fire-breather: same from above/below, double from the side.
 	function pump_pts(kind : integer; row : integer; side : boolean) return integer is
 		variable p : integer;
 	begin
@@ -513,7 +517,7 @@ package body digger_pkg is
 	function ghost_delay(rnd : integer) return integer is
 		variable d : integer;
 	begin
-		d := GHOST_WAIT - 30 * (rnd - 1);       -- later rounds ghost sooner, never below 3 seconds
+		d := GHOST_WAIT - 30 * (rnd - 1);
 		if d < 180 then d := 180; end if;
 		return d;
 	end function;
@@ -521,7 +525,7 @@ package body digger_pkg is
 	function enemy_spd(rnd : integer; ghost : boolean) return integer is
 		variable s : integer;
 	begin
-		s := 8 + (rnd - 1) / 2;          -- later rounds are faster
+		s := 8 + (rnd - 1) / 2;
 		if s > 14 then s := 14; end if;
 		if ghost then s := s - 2; end if;
 		return s;
