@@ -7,6 +7,8 @@ use work.digger_pkg.all;
 
 package level_pkg is
 	function make_level(level : integer) return std_logic_vector;
+	constant LEVEL1_MAP : std_logic_vector(0 to ROWS * COLS - 1) := make_level(1);
+	constant LEVEL2_MAP : std_logic_vector(0 to ROWS * COLS - 1) := make_level(2);
 	-- fresh round: map, player, enemies, rocks, vegetable reset. Score, lives, round, bonus untouched.
 	function new_round(st : game_state_t) return game_state_t;
 	-- after the player dies: player and surviving enemies go back to their start, map stays
@@ -155,7 +157,11 @@ package body level_pkg is
 		variable v : game_state_t := st;
 		variable s : level_start_t;
 	begin
-		s := level_start(((st.rnd - 1) mod 2) + 1);
+		if (st.rnd mod 2) = 1 then
+			s := level_start(1);
+		else
+			s := level_start(2);
+		end if;
 
 		-- Reset player position
 		v.px := s.px;
@@ -192,11 +198,19 @@ package body level_pkg is
 		variable s : level_start_t;
 		variable level : integer;
 	begin
-		level := ((st.rnd - 1) mod 2) + 1;
-		s := level_start(level);
+		if (st.rnd mod 2) = 1 then
+			s := level_start(1);
+		else
+			s := level_start(2);
+		end if;
 
 		v := respawn(st);
-		v.dirt := make_level(level);
+		
+		if (st.rnd mod 2) = 1 then
+			v.dirt := LEVEL1_MAP;
+		else
+			v.dirt := LEVEL2_MAP;
+		end if;
 
 		-- Activate only the enemies used by this level
 		for i in 0 to MAX_ENEMIES - 1 loop

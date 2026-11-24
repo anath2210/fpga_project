@@ -382,7 +382,7 @@ begin
 			if rst = '1' then
 				s          <= make_init;
 				init_ram   <= '1';
-				init_map   <= make_level(1);
+				init_map   <= LEVEL1_MAP;
 				dig_active <= '0';
 				dig_cnt    <= (others => '0');
 			elsif tick = '1' then

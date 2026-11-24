@@ -21,8 +21,8 @@ package digger_pkg is
 	constant ROW_DIRT1    : integer := 16;
 	constant ROW_HUD1     : integer := 17;
 
-	constant MAX_ENEMIES : integer := 6;
-	constant MAX_ROCKS   : integer := 5;
+	constant MAX_ENEMIES : integer := 5;
+	constant MAX_ROCKS   : integer := 4;
 	constant MAX_LIVES   : integer := 5;
 	constant START_LIVES : integer := 3;
 
