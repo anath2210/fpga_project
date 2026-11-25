@@ -169,10 +169,12 @@ begin
 						end if;
 					end if;
 
-					c := (v.px + 8) / TILE;
-					r := (v.py + 8) / TILE;
-					if r >= ROW_DIRT0 and r <= ROW_DIRT1 then
-						v.dirt(r * COLS + c) := '0';
+					if v.px mod TILE = 0 and v.py mod TILE = 0 then
+						c := (v.px + 8) / TILE;
+						r := (v.py + 8) / TILE;
+						if r >= ROW_DIRT0 and r <= ROW_DIRT1 then
+							v.dirt(r * COLS + c) := '0';
+						end if;
 					end if;
 				end if;
 			end if;
@@ -242,10 +244,8 @@ begin
 								nx := v.ex(i) + dir_dx(v.edir(i));
 								ny := v.ey(i) + dir_dy(v.edir(i));
 								if nx < PF_W - TILE + 1 and ny < PF_H - TILE + 1 then
-									if v.eghost(i) > 0 or ((nx mod 2 /= 0 and ny mod 2 /= 0) or enemy_span_ok(v, nx, ny, false)) then
-										v.ex(i) := nx;
-										v.ey(i) := ny;
-									end if;
+									v.ex(i) := nx;
+									v.ey(i) := ny;
 								end if;
 							end if;
 						end if;
@@ -275,7 +275,6 @@ begin
 						else
 							v.rstate(j) := 2;
 							v.rk(j) := 0;
-							v.dirt(r * COLS + c) := '0';
 							if v.rdrops < MAX_ROCKS then
 								v.rdrops := v.rdrops + 1;
 							end if;
@@ -283,7 +282,6 @@ begin
 								v.vstate := 1;
 								v.vtimer := VEG_FRAMES;
 								v.vdone  := '1';
-								v.dirt(VEG_ROW * COLS + VEG_COL) := '0';
 							end if;
 						end if;
 
