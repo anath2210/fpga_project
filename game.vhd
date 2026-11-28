@@ -34,6 +34,7 @@ architecture arch of game is
 	signal dig_horiz  : std_logic := '0'; -- '1' = left/right (step +CHUNK_W), '0' = up/down (step +1)
 	signal dig_cnt    : unsigned(2 downto 0) := (others => '0'); -- 0..7
 	signal dig_addr   : chunk_addr_t := (others => '0');
+	signal part : std_logic_vector(0 to ROWS * COLS - 1) := (others => '0');
 begin
 	gs <= s;
 
@@ -53,6 +54,8 @@ begin
 		variable start_cy_v : integer range 0 to CHUNK_H - 1;
 		variable n_alive    : integer range 0 to MAX_ENEMIES;
 		variable pb         : rect_t;
+		variable pmark : integer range -1 to ROWS * COLS - 1;
+		variable reload : boolean;
 
 		procedure do_player is
 			variable want    : integer range -1 to 3;
@@ -63,6 +66,8 @@ begin
 			variable lx, ly  : integer;
 			variable i       : integer range 0 to MAX_ENEMIES - 1;
 			variable c, r    : integer range 0 to 17;
+			variable cc, rr : integer;
+			variable hose_ok : boolean;
 		begin
 			aligned := (v.px mod TILE = 0) and (v.py mod TILE = 0);
 
@@ -72,7 +77,13 @@ begin
 						v.hlen := v.hlen + 1;
 						lx := hose_tip_x(v) - dir_dx(v.pdir);
 						ly := hose_tip_y(v) - dir_dy(v.pdir);
-						if not hose_cell_ok(v, cell_of(lx), cell_of(ly)) then
+						cc := cell_of(lx);
+						rr := cell_of(ly);
+						hose_ok := hose_cell_ok(v, cc, rr);
+						if not hose_ok and cc >= 0 and cc < COLS and rr >= ROW_DIRT0 and rr <= ROW_DIRT1 then
+							hose_ok := part(rr * COLS + cc) = '1' and not rock_in_cell(v, cc, rr);
+						end if;
+						if not hose_ok then
 							v.hlen := v.hlen - 1;
 							exit;
 						end if;
@@ -149,6 +160,16 @@ begin
 							v.px := v.px + dir_dx(nd);
 							v.py := v.py + dir_dy(nd);
 							start_dig := true;
+							if dir_dx(nd) /= 0 then
+							if dir_dx(nd) > 0 then c := (v.px + TILE - 1) / TILE; else c := v.px / TILE; end if;
+								r := v.py / TILE;
+							else
+								c := v.px / TILE;
+								if dir_dy(nd) > 0 then r := (v.py + TILE - 1) / TILE; else r := v.py / TILE; end if;
+							end if;
+							if r >= ROW_DIRT0 and r <= ROW_DIRT1 then
+								pmark := r * COLS + c;
+							end if;
 							if dir_dx(nd) /= 0 then
 								dig_h_v := '1';
 								if dir_dx(nd) > 0 then
@@ -374,6 +395,8 @@ begin
 			init_ram  <= '0';
 			start_dig := false;
 			dig_h_v   := '0';
+			pmark := -1;
+			reload := false;
 			start_cx_v := 0;
 			start_cy_v := 0;
 
@@ -383,6 +406,7 @@ begin
 				init_map   <= LEVEL1_MAP;
 				dig_active <= '0';
 				dig_cnt    <= (others => '0');
+				part <= (others => '0');
 			elsif tick = '1' then
 				v := s;
 
@@ -448,6 +472,7 @@ begin
 							v.lfsr := lf;
 							init_ram <= '1';
 							init_map <= v.dirt;
+							reload := true;
 						end if;
 
 					when 3 =>
@@ -458,6 +483,7 @@ begin
 							v := new_round(v);
 							init_ram <= '1';
 							init_map <= v.dirt;
+							reload := true;
 						end if;
 
 					when others =>
@@ -476,9 +502,15 @@ begin
 					v.lfsr := lf;
 					init_ram <= '1';
 					init_map <= v.dirt;
+					reload := true;
 				end if;
 
 				s <= v;
+				if reload then
+					part <= (others => '0');
+				elsif pmark >= 0 then
+					part(pmark) <= '1';
+				end if;
 
 				if start_dig then
 					dig_active <= '1';
